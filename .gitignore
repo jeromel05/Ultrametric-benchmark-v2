@@ -156,6 +156,6 @@ plots/
 *.DS_Store
 DS_Store
 *.gz
-
+.DS_Store
 
 

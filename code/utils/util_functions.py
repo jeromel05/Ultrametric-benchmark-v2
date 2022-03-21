@@ -6,6 +6,16 @@ import tensorflow as tf
 from matplotlib import cm
 import itertools
 
+class bcolors:
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
     
 # one hot encoding for classes
 def one_hot_labels(label, nb_classes):
@@ -26,7 +36,7 @@ def plot_to_image(figure):
     
     return image
 
-def plot_confusion_matrix(cm, class_names):
+def make_confusion_matrix_figure(cm, class_names):
     """
     Returns a matplotlib figure containing the plotted confusion matrix.
 
@@ -55,3 +65,23 @@ def plot_confusion_matrix(cm, class_names):
     plt.ylabel('True label')
     plt.xlabel('Predicted label')
     return figure
+
+def make_roc_curves_figure(fpr, tpr, classes):
+                roc_curve_fig, a = plt.subplots(int(classes/4),int(classes/2))
+                roc_curve_fig.set_figheight(10)
+                roc_curve_fig.set_figwidth(10)
+                for i in range(len(tpr)):
+                    a1 = a[i//4, i%4]
+                    a1.plot(fpr[i], tpr[i])
+                    a1.set_xlabel("FPR")
+                    a1.set_ylabel("TPR")
+                    a1.set_title(f"ROC curve {i}")
+                return roc_curve_fig
+
+def print_metrics(acc, ap, auroc_, cf_mat, roc_curve, seed):
+            print("----------------------------------------")
+            print(f"""{bcolors.OKCYAN}Final validation accuracy: {acc:.3} \n
+                    Final validation ap: {ap:.3} \n
+                    Final validation auroc_: {auroc_:.3} {bcolors.ENDC}""")
+            plt.savefig(f"../plots/best_val_cf_mat_seed_{seed}.jpg", cf_mat, dpi=200)
+            plt.savefig(f"../plots/best_val_roc_curve_seed_{seed}.jpg", roc_curve, dpi=200)

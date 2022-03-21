@@ -168,7 +168,8 @@ notebooks/.DS_Store
 code/.DS_Store
 code/utils/.DS_Store
 notebooks/.DS_Store
-
+.DS_Store?
+.DS_Store*
 
 
 

@@ -1,4 +1,5 @@
 from matplotlib import pyplot as plt
+import numpy as np
 from sklearn import metrics
 import torch
 import pytorch_lightning as pl
@@ -6,9 +7,7 @@ from torch import nn
 from torch.nn import functional as F
 from torchmetrics.functional import accuracy, average_precision, auroc, roc, confusion_matrix
 from torchmetrics.utilities.data import to_categorical
-from repo.code.utils.util_functions import make_confusion_matrix_figure, make_roc_curves_figure
-
-from util_functions import plot_confusion_matrix
+from util_functions import make_confusion_matrix_figure, make_roc_curves_figure, print_metrics
 
 class FFNetwork(pl.LightningModule):
     def __init__(self, input_size, hidden_size, learning_rate, nb_classes, mode):
@@ -41,16 +40,16 @@ class FFNetwork(pl.LightningModule):
         acc = accuracy(preds, target, average='micro', num_classes=num_classes)
         ap = average_precision(preds, target, num_classes=num_classes, average='macro')
         auroc_ = auroc(preds, target, num_classes=num_classes, average='macro')
-        if (not cm_figure) or num_classes > 8:
+        if (not cm_figure) or num_classes > 16:
             cf_mat = confusion_matrix(preds, target, num_classes=num_classes) #, normalize='true') # causes nan
         else:
-            cf_mat = metrics.confusion_matrix(target, categorical_preds, labels=self.classes)
-            cf_mat = make_confusion_matrix_figure(cf_mat, self.classes)
+            cf_mat = metrics.confusion_matrix(target.cpu(), categorical_preds.cpu(), labels=np.arange(num_classes))
+            cf_mat = make_confusion_matrix_figure(cf_mat, torch.arange(num_classes))
             #cf_mat = plot_to_image(cf_mat)
         
         roc_curve = roc(preds, target, num_classes=num_classes)
         fpr, tpr, _ = roc_curve
-        if roc_figure and num_classes <= 8:
+        if roc_figure and num_classes <= 16:
             roc_curve = make_roc_curves_figure(fpr, tpr, num_classes)
         
         return acc, ap, auroc_, cf_mat, roc_curve
@@ -61,23 +60,24 @@ class FFNetwork(pl.LightningModule):
         x = x.view(x.size(0), -1)
         o = self.forward(x)
         loss = F.binary_cross_entropy_with_logits(o, y)
-        self.log('train_loss', loss)
+        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
         
         target = to_categorical(y, argmax_dim=1)
         
-        roc_figure = True if self.global_step % 100 == 0 else False
+        #roc_figure = True if self.global_step % 100 == 0 else False
+        roc_figure=False
         train_acc, train_ap, train_auroc, train_cf_mat, train_roc = self.evaluate_metrics(o, target, num_classes, 
                                                                             cm_figure=False, roc_figure=roc_figure)
         
-        self.log('train_acc', train_acc, on_step=True, on_epoch=True, prog_bar=True, logger=True)
-        self.log('train_ap', train_ap, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log('train_auroc', train_auroc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('train_acc', train_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('train_ap', train_ap, on_step=False, on_epoch=True, prog_bar=False, logger=True)
+        self.log('train_auroc', train_auroc, on_step=False, on_epoch=True, prog_bar=False, logger=True)
         
         tensorboard = self.logger.experiment
         tensorboard.add_image("train_cf_mat", train_cf_mat, dataformats='HW', global_step=self.global_step)
         #tensorboard.add_figure("train_cf_mat", train_cf_mat)
         
-        if num_classes <= 8:
+        if num_classes <= 16 and roc_figure:
             tensorboard.add_figure("train_roc_curve", train_roc, global_step=self.global_step)
         
         return loss
@@ -88,7 +88,7 @@ class FFNetwork(pl.LightningModule):
         x = x.view(x.size(0), -1)
         o = self.forward(x)
         loss = F.binary_cross_entropy_with_logits(o, y)
-        self.log('val_loss', loss)
+        self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         
         target = to_categorical(y, argmax_dim=1)
         
@@ -99,13 +99,39 @@ class FFNetwork(pl.LightningModule):
         self.log('val_ap', val_ap, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         self.log('val_auroc', val_auroc_, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         tensorboard = self.logger.experiment
-        if num_classes > 8:
+        if num_classes > 16:
             tensorboard.add_image("val_cf_mat", val_cf_mat, dataformats='HW', global_step=self.global_step)
         else:
             tensorboard.add_figure("val_cf_mat", val_cf_mat, global_step=self.global_step)
             tensorboard.add_figure("val_roc_curve", val_roc_curve, global_step=self.global_step)
+
+    def test_step(self, test_batch, batch_idx):
+        x, y = test_batch
+        num_classes = y.size(1)
+        x = x.view(x.size(0), -1)
+        o = self.forward(x)
+        loss = F.binary_cross_entropy_with_logits(o, y)
+        self.log('test_loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         
-    def on_validation_end(self):
+        target = to_categorical(y, argmax_dim=1)
+        test_acc, test_ap, test_auroc_, test_cf_mat, test_roc_curve = self.evaluate_metrics(o, 
+                                                        target, num_classes, cm_figure=True, roc_figure=True)
+
+        self.log('test_acc', test_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('test_ap', test_ap, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('test_auroc', test_auroc_, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+
+        print_metrics(test_acc, test_ap, test_auroc_, test_cf_mat, test_roc_curve, save_figs = (num_classes <= 16))
+        
+        
+    def validation_epoch_end(self, outputs):
         if self.mode == 'split':
             self.trainer.datamodule.train_dataloader().sampler.update_curr_epoch_nb()
             self.trainer.datamodule.val_dataloader().sampler.update_curr_epoch_nb()
+
+        if self.mode == 'um': # and (not self.current_epoch % 3):
+            self.trainer.datamodule.train_dataloader().sampler.reset_sampler()
+            for layer in self.children():
+                if hasattr(layer, 'reset_parameters'):
+                    print(f"resetting layer: {layer}")
+                    layer.reset_parameters()

@@ -53,7 +53,7 @@ def make_confusion_matrix_figure(cm, class_names):
     plt.yticks(tick_marks, class_names)
 
     # Compute the labels from the normalized confusion matrix.
-    labels = np.around(cm.astype('float') / cm.sum(axis=1)[:, np.newaxis], decimals=2)
+    labels = np.around(cm.astype('float') / (cm.sum(axis=1)[:, np.newaxis] + 1e3), decimals=2)
 
     # Use white text if squares are dark; otherwise black.
     threshold = cm.max() / 2.
@@ -67,21 +67,24 @@ def make_confusion_matrix_figure(cm, class_names):
     return figure
 
 def make_roc_curves_figure(fpr, tpr, classes):
-                roc_curve_fig, a = plt.subplots(int(classes/4),int(classes/2))
-                roc_curve_fig.set_figheight(10)
-                roc_curve_fig.set_figwidth(10)
-                for i in range(len(tpr)):
-                    a1 = a[i//4, i%4]
-                    a1.plot(fpr[i], tpr[i])
-                    a1.set_xlabel("FPR")
-                    a1.set_ylabel("TPR")
-                    a1.set_title(f"ROC curve {i}")
-                return roc_curve_fig
+    roc_curve_fig, a = plt.subplots(int(classes/4),int(classes/2))
+    roc_curve_fig.set_figheight(10)
+    roc_curve_fig.set_figwidth(10)
+    for i in range(len(tpr)):
+        a1 = a[i//4, i%4]
+        a1.plot(fpr[i].cpu(), tpr[i].cpu())
+        a1.set_xlabel("FPR")
+        a1.set_ylabel("TPR")
+        a1.set_title(f"ROC curve {i}")
+    return roc_curve_fig
 
-def print_metrics(acc, ap, auroc_, cf_mat, roc_curve, seed):
-            print("----------------------------------------")
-            print(f"""{bcolors.OKCYAN}Final validation accuracy: {acc:.3} \n
-                    Final validation ap: {ap:.3} \n
-                    Final validation auroc_: {auroc_:.3} {bcolors.ENDC}""")
-            plt.savefig(f"../plots/best_val_cf_mat_seed_{seed}.jpg", cf_mat, dpi=200)
-            plt.savefig(f"../plots/best_val_roc_curve_seed_{seed}.jpg", roc_curve, dpi=200)
+def print_metrics(acc, ap, auroc_, cf_mat, roc_curve, seed=0, do_print=False, save_figs=False):
+    print()
+    if do_print:
+        print("----------------------------------------")
+        print(f"""{bcolors.OKCYAN}Final validation accuracy: {acc:.3}
+        Final validation ap: {ap:.3}
+        Final validation auroc_: {auroc_:.3} {bcolors.ENDC}""")
+    if save_figs:
+        cf_mat.savefig(f"../../plots/best_val_cf_mat_seed_{seed}.jpg", dpi=250)
+        roc_curve.savefig(f"../../plots/best_val_roc_curve_seed_{seed}.jpg", dpi=250)

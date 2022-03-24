@@ -24,7 +24,6 @@ from network import FFNetwork
 
 
 def run():
-    print("Parsing args")
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--gpu', type=int, default=1, help="Nb GPUs")
@@ -48,13 +47,16 @@ def run():
     parser.add_argument('-T', '--temperature', type=float, default=0.4, help="define level of verbosity")
     parser.add_argument('--mode', type=str, default='rand', choices=['rand', 'um', 'split'], help="Folder to save the data")
     parser.add_argument('--num_workers', type=int, default=4, help="define level of verbosity")
-    parser.add_argument('--log_every_n_steps', type=int, default=10, help="define level of verbosity")
     parser.add_argument('-s', '--shuffles', nargs='+', type=int, help="define level of verbosity")
+    parser.add_argument('--normalize_data', action='store_true', help="define level of verbosity")
+    parser.add_argument('--repeat_data', type=int, default=1, help="define level of verbosity")
+    parser.add_argument('--test_split', type=float, default=0.1, help="define level of verbosity")
     
     
     args = parser.parse_args()
     dataset_name = args.dataset
     nb_classes = 2**args.max_tree_depth
+
     print("Creating DMs")
     if dataset_name == 'mnist':
         data_module = MnistDataModule(data_dir=args.datafolder, mode=args.mode, 
@@ -64,7 +66,8 @@ def run():
         data_module = SynthDataModule(data_dir=args.datafolder, mode=args.mode, 
                                     batch_size_train=args.batch_size_train, batch_size_test=args.batch_size_test, 
                                     num_workers=args.num_workers, max_depth=args.max_tree_depth, noise_level=args.noise_level, 
-                                    p_flip=args.p_flip, leaf_length=args.input_size)
+                                    p_flip=args.p_flip, leaf_length=args.input_size, normalize_data=args.normalize_data,
+                                    repeat_data=args.repeat_data, test_split=args.test_split)
     
     print("Creating Network")
     # model
@@ -97,8 +100,8 @@ def run():
 
         trainer = pl.Trainer(default_root_dir=checkpoint_path, gpus=args.gpu, 
                             num_nodes=1, precision=32, logger=logger, max_epochs=args.max_epochs,
-                            reload_dataloaders_every_n_epochs=0, callbacks=[checkpoint_callback],
-                            log_every_n_steps=args.log_every_n_steps) #, fast_dev_run=4)
+                            callbacks=[checkpoint_callback],
+                            log_every_n_steps=50, check_val_every_n_epoch=max(args.max_epochs//20, 1)) #, fast_dev_run=4)
         trainer.fit(model, data_module)
 
         best_model_path = checkpoint_callback.best_model_path

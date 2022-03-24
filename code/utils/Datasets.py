@@ -268,23 +268,30 @@ class MnistDataModule(pl.LightningDataModule):
 
 class SynthDataModule(UMDataModule):
     def __init__(self, max_depth: int, data_dir: str = "./", batch_size_train: int=128, batch_size_test: int=1000, 
-                 num_workers: int=4, mode: str='rand', chain=None, leaf_length=1000, noise_level=1, p_flip=0.01):
+                 num_workers: int=4, mode: str='rand', chain=None, leaf_length=1000, noise_level=1, p_flip=0.01,
+                 normalize_data=False, repeat_data=1, test_split=0.1):
         super().__init__(max_depth=max_depth, data_dir=data_dir, batch_size_train=batch_size_train, 
                         batch_size_test=batch_size_test, num_workers=num_workers, mode=mode, chain=chain)
         self.leaf_length = leaf_length
         self.tree = SynthUltrametricTree(max_depth=max_depth, p_flip=p_flip, 
                                          leaf_length=leaf_length, shuffle_labels=True,
                                          noise_level=noise_level)
-        self.do_normalization = True
+        self.normalize_data = normalize_data
+        self.repeat_data = repeat_data
+        self.test_split = test_split
                              
     def setup(self, stage = None):
         X, y = self.tree.leaves, self.tree.labels
-        if self.do_normalization:
+        if self.normalize_data:
             X = np.array([el/np.sum(el) for el in X]) # normalize input
-        print(X.shape)
+        
         X = torch.tensor(X, dtype=torch.float)
         y = torch.tensor(y, dtype=torch.long)
-        X_train, X_test, y_train, y_test = model_selection.train_test_split(X, y, test_size=0.1)
+        X_train, X_test, y_train, y_test = model_selection.train_test_split(X, y, test_size=self.test_split)
+        X_train = np.tile(X_train, (self.repeat_data, 1))
+        y_train = np.tile(y_train, self.repeat_data)
+        print(f"Train data size {X_train.shape}, {y_train.shape}, classes: {set(y_train)}")
+        print(f"Val data size {X_test.shape}, {y_test.shape}, classes: {set(y_test)}")
 
         def prepare_target_data(y):
             class_index = [np.where(y==class_label)[0] for class_label in self.classes]

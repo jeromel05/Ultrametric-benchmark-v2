@@ -10,7 +10,7 @@ from torchmetrics.utilities.data import to_categorical
 from util_functions import make_confusion_matrix_figure, make_roc_curves_figure, print_metrics
 
 class FFNetwork(pl.LightningModule):
-    def __init__(self, input_size, hidden_size, learning_rate, nb_classes, mode):
+    def __init__(self, input_size, hidden_size, nb_classes, mode):
         super().__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -18,8 +18,8 @@ class FFNetwork(pl.LightningModule):
         self.relu = nn.ReLU()
         self.l2 = nn.Linear(self.hidden_size, nb_classes)
         self.softmax = nn.Softmax(dim = 1)
+
         self.mode = mode
-        
         self.save_hyperparameters()
 
     def forward(self, x):
@@ -30,7 +30,11 @@ class FFNetwork(pl.LightningModule):
         return output
 
     def configure_optimizers(self):
-        optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
+        if self.optimizer == 'adam':
+            optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
+        elif self.optimizer == 'sgd':
+            optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate, momentum=0.2)
+        
         return optimizer
     
     def evaluate_metrics(self, preds, target, num_classes,
@@ -64,8 +68,7 @@ class FFNetwork(pl.LightningModule):
         
         target = to_categorical(y, argmax_dim=1)
         
-        #roc_figure = True if self.global_step % 100 == 0 else False
-        roc_figure=False
+        roc_figure = True if (self.global_step % 100 == 0) and (num_classes <= 16) else False
         train_acc, train_ap, train_auroc, train_cf_mat, train_roc = self.evaluate_metrics(o, target, num_classes, 
                                                                             cm_figure=False, roc_figure=roc_figure)
         
@@ -133,5 +136,5 @@ class FFNetwork(pl.LightningModule):
             self.trainer.datamodule.train_dataloader().sampler.reset_sampler()
             for layer in self.children():
                 if hasattr(layer, 'reset_parameters'):
-                    print(f"resetting layer: {layer}")
+                    #print(f"resetting layer: {layer}")
                     layer.reset_parameters()

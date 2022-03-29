@@ -1,3 +1,5 @@
+import os
+from os.path import join
 from sklearn import model_selection
 import torch
 import torchvision
@@ -224,8 +226,15 @@ class UMDataModule(pl.LightningDataModule):
         return DataLoader(self.predict_ds, batch_size=self.batch_size_test, shuffle=False, 
                           num_workers=self.num_workers, sampler=self.test_sampler)
     
-    def set_chain(self, chain: list):
-        self.markov_chain = chain
+    def set_markov_chain(self, args, seed):
+        if args.generate_chain:
+            markov_chain = generate_markov_chain(chain_length=args.total_sample_nb, T=args.T, 
+                                                tree_levels=args.max_tree_depth, dia=0).tolist()
+        else:
+            saved_chain_name = f'saved_chains/tree_levels{args.max_tree_depth:02d}_clen1.0e+06_seed{seed:}.npy'
+            path_to_data = join(os.getcwd(), args.datafolder, saved_chain_name)
+            markov_chain = np.load(path_to_data).tolist()
+        self.markov_chain = markov_chain
 
                              
 class MnistDataModule(pl.LightningDataModule):
@@ -283,6 +292,7 @@ class SynthDataModule(UMDataModule):
         self.repeat_data = repeat_data
         self.test_split = test_split
         self.b_len = b_len
+        print("Data_module_initialized")
                              
     def setup(self, stage = None):
         X, y = self.tree.leaves, self.tree.labels

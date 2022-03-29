@@ -1,13 +1,11 @@
 import argparse
 import os, sys
 from os.path import join
-from matplotlib import pyplot as plt
 
 import numpy as np
 curr_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, join(curr_path,"../data/"))
 sys.path.insert(0, join(curr_path,"../utils/"))
-from functions_markov import generate_markov_chain
 from util_functions import bcolors
 
 from datetime import datetime
@@ -18,7 +16,6 @@ from torchvision import transforms
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping
-from torch.utils.data import DataLoader
 
 from Datasets import MnistDataModule, SynthDataModule, SynthPredictDataset
 from network import FFNetwork
@@ -86,24 +83,20 @@ def run():
                                             filename="{epoch:02d}_{val_loss:.2f}",
                                             save_top_k=1, mode="max")
             logger = TensorBoardLogger(checkpoint_path, name=f"metrics_{dataset_name}", version=f"fold_{seed}")
-
-            def set_markov_chain(args, mode, seed, data_module):
-                if mode == 'um':
-                    if args.generate_chain:
-                        markov_chain = generate_markov_chain(chain_length=args.total_sample_nb, T=args.T, 
-                                                            tree_levels=args.max_tree_depth, dia=0).tolist()
-                    else:
-                        saved_chain_name = f'saved_chains/tree_levels{args.max_tree_depth:02d}_clen1.0e+06_seed{seed:}.npy'
-                        path_to_data = os.path.join(os.getcwd(), args.datafolder, saved_chain_name)
-                        markov_chain = np.load(path_to_data).tolist()
-            data_module.set_chain(args)
+            if mode == 'um':
+                data_module.set_markov_chain(args, seed)
 
             trainer = pl.Trainer(default_root_dir=checkpoint_path, gpus=args.gpu, 
                                 num_nodes=1, precision=32, logger=logger, max_epochs=args.max_epochs,
                                 callbacks=[checkpoint_callback, early_stop_callback],
-                                log_every_n_steps=nb_batches_per_epoch, check_val_every_n_epoch=max(args.max_epochs//20, 1)) #, fast_dev_run=4)
+                                log_every_n_steps=nb_batches_per_epoch, 
+                                check_val_every_n_epoch=max(args.max_epochs//20, 1),
+                                auto_lr_find=True) #, fast_dev_run=4)
             
-            model.hparams.lr = find_lr(trainer=trainer, model=model, checkpoint_path_fold=checkpoint_path_fold)
+            print(trainer)
+            print(data_module)
+            #model.hparams.lr = find_lr(trainer=trainer, model=model, checkpoint_path_fold=checkpoint_path_fold)
+            #marche pas pck train_dataloader() pas défini dans trainer???
             print("hparams", model.hparams)
 
             trainer.fit(model, data_module)
@@ -114,9 +107,6 @@ def run():
             model.eval()
             trainer.test(model, dataloaders=data_module.val_dataloader())
             #print("Best Val Acc", checkpoint_callback.best_model_score.detach())
-
-if __name__ == '__main__':
-    run()
 
 def create_data_modules(args, dataset_name: str):
         print("Creating datamodules")
@@ -150,8 +140,12 @@ def create_data_modules(args, dataset_name: str):
         return data_modules
 
 def find_lr(trainer, model, checkpoint_path_fold):
-                lr_finder = trainer.tuner.lr_find(model)
-                print(f"Suggested_lr {lr_finder.results}")
-                fig = lr_finder.plot(suggest=True)
-                fig.savefig(join(checkpoint_path_fold, "lr_plot.jpg"))
-                return lr_finder.suggestion()
+    #trainer.tune(model)
+    lr_finder = trainer.tuner.lr_find(model)
+    print(f"Suggested_lr {lr_finder.results}")
+    fig = lr_finder.plot(suggest=True)
+    fig.savefig(join(checkpoint_path_fold, "lr_plot.jpg"))
+    return lr_finder.suggestion()
+
+if __name__ == '__main__':
+    run()

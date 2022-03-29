@@ -53,7 +53,7 @@ def make_confusion_matrix_figure(cm, class_names):
     plt.yticks(tick_marks, class_names)
 
     # Compute the labels from the normalized confusion matrix.
-    labels = np.around(cm.astype('float') / (cm.sum(axis=1)[:, np.newaxis] + 1e3), decimals=2)
+    labels = np.around(cm.astype('float') / (cm.sum(axis=1)[:, np.newaxis] + 1e6), decimals=2)
 
     # Use white text if squares are dark; otherwise black.
     threshold = cm.max() / 2.
@@ -66,8 +66,11 @@ def make_confusion_matrix_figure(cm, class_names):
     plt.xlabel('Predicted label')
     return figure
 
-def make_roc_curves_figure(fpr, tpr, classes):
-    roc_curve_fig, a = plt.subplots(int(classes/4),int(classes/2))
+def make_roc_curves_figure(fpr, tpr, nb_classes):
+    if nb_classes <= 8: rows, cols=2,4
+    elif nb_classes <= 16: rows, cols=4,4
+
+    roc_curve_fig, a = plt.subplots(rows, cols)
     roc_curve_fig.set_figheight(10)
     roc_curve_fig.set_figwidth(10)
     for i in range(len(tpr)):

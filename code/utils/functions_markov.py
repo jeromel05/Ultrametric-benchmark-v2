@@ -96,4 +96,11 @@ def generate_markov_chain(chain_length=500000, T=0.2, tree_levels=3, dia=0):
     markovme = normalize_matrix(dia, tree_l, markovme)
     # generate the markov chain
     chain = generate_chain(markovme, chain_length, verbose=1)
-    return chain  
+    return chain 
+
+def shuffle_blocks_v2(chain, b_len):
+    shuff_chain = chain.copy() #bc we modifiy in-place afterward
+    blocks = [shuff_chain[i:i+b_len] for i in range(0,len(shuff_chain),b_len)]
+    np.random.shuffle(blocks)
+    shuff_chain[:] = [b for bs in blocks for b in bs]
+    return shuff_chain

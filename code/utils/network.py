@@ -10,7 +10,7 @@ from torchmetrics.utilities.data import to_categorical
 from util_functions import make_confusion_matrix_figure, make_roc_curves_figure, print_metrics
 
 class FFNetwork(pl.LightningModule):
-    def __init__(self, input_size, hidden_size, nb_classes, mode):
+    def __init__(self, input_size, hidden_size, nb_classes, mode, optimizer, learning_rate):
         super().__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -19,7 +19,6 @@ class FFNetwork(pl.LightningModule):
         self.l2 = nn.Linear(self.hidden_size, nb_classes)
         self.softmax = nn.Softmax(dim = 1)
 
-        self.mode = mode
         self.save_hyperparameters()
 
     def forward(self, x):
@@ -30,9 +29,9 @@ class FFNetwork(pl.LightningModule):
         return output
 
     def configure_optimizers(self):
-        if self.optimizer == 'adam':
+        if self.hparams.optimizer == 'adam':
             optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
-        elif self.optimizer == 'sgd':
+        elif self.hparams.optimizer == 'sgd':
             optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate, momentum=0.2)
         
         return optimizer
@@ -47,8 +46,8 @@ class FFNetwork(pl.LightningModule):
         if (not cm_figure) or num_classes > 16:
             cf_mat = confusion_matrix(preds, target, num_classes=num_classes) #, normalize='true') # causes nan
         else:
-            cf_mat = metrics.confusion_matrix(target.cpu(), categorical_preds.cpu(), labels=np.arange(num_classes))
-            cf_mat = make_confusion_matrix_figure(cf_mat, torch.arange(num_classes))
+            cf_mat = metrics.confusion_matrix(target.cpu().numpy(), categorical_preds.cpu().numpy(), labels=np.arange(num_classes))
+            cf_mat = make_confusion_matrix_figure(cf_mat, np.arange(num_classes))
             #cf_mat = plot_to_image(cf_mat)
         
         roc_curve = roc(preds, target, num_classes=num_classes)
@@ -64,11 +63,11 @@ class FFNetwork(pl.LightningModule):
         x = x.view(x.size(0), -1)
         o = self.forward(x)
         loss = F.binary_cross_entropy_with_logits(o, y)
-        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=True, logger=True)
+        self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=False, logger=True)
         
         target = to_categorical(y, argmax_dim=1)
         
-        roc_figure = True if (self.global_step % 100 == 0) and (num_classes <= 16) else False
+        roc_figure = True if (self.global_step % 300 == 0) and (num_classes <= 16) else False
         train_acc, train_ap, train_auroc, train_cf_mat, train_roc = self.evaluate_metrics(o, target, num_classes, 
                                                                             cm_figure=False, roc_figure=roc_figure)
         
@@ -100,7 +99,7 @@ class FFNetwork(pl.LightningModule):
 
         self.log('val_acc', val_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         self.log('val_ap', val_ap, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log('val_auroc', val_auroc_, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('val_auroc', val_auroc_, on_step=False, on_epoch=True, prog_bar=False, logger=True)
         tensorboard = self.logger.experiment
         if num_classes > 16:
             tensorboard.add_image("val_cf_mat", val_cf_mat, dataformats='HW', global_step=self.global_step)
@@ -114,27 +113,35 @@ class FFNetwork(pl.LightningModule):
         x = x.view(x.size(0), -1)
         o = self.forward(x)
         loss = F.binary_cross_entropy_with_logits(o, y)
-        self.log('test_loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('test_loss', loss, on_step=False, on_epoch=True, prog_bar=False, logger=True)
         
         target = to_categorical(y, argmax_dim=1)
         test_acc, test_ap, test_auroc_, test_cf_mat, test_roc_curve = self.evaluate_metrics(o, 
                                                         target, num_classes, cm_figure=True, roc_figure=True)
 
-        self.log('test_acc', test_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log('test_ap', test_ap, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log('test_auroc', test_auroc_, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+        self.log('test_acc', test_acc, on_step=False, on_epoch=True, prog_bar=False, logger=True)
+        self.log('test_ap', test_ap, on_step=False, on_epoch=True, prog_bar=False, logger=True)
+        self.log('test_auroc', test_auroc_, on_step=False, on_epoch=True, prog_bar=False, logger=True)
 
         print_metrics(test_acc, test_ap, test_auroc_, test_cf_mat, test_roc_curve, save_figs = (num_classes <= 16))
         
         
     def validation_epoch_end(self, outputs):
-        if self.mode == 'split':
+        if self.hparams.mode == 'split':
             self.trainer.datamodule.train_dataloader().sampler.update_curr_epoch_nb()
             self.trainer.datamodule.val_dataloader().sampler.update_curr_epoch_nb()
 
-        if self.mode == 'um': # and (not self.current_epoch % 3):
+        if self.hparams.mode == 'um': # and (not self.current_epoch % 3):
             self.trainer.datamodule.train_dataloader().sampler.reset_sampler()
             for layer in self.children():
                 if hasattr(layer, 'reset_parameters'):
                     #print(f"resetting layer: {layer}")
                     layer.reset_parameters()
+
+    def get_progress_bar_dict(self):
+            items = super().get_progress_bar_dict()
+            # discard the version number
+            items.pop("v_num", None)
+            # discard the loss
+            #items.pop("loss", None)
+            return items

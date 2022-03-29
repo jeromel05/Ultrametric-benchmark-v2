@@ -1,0 +1,10 @@
+classes_test = np.random.randint(0, high=self.nb_classes, size=round(self.test_split*self.nb_classes))
+classes_train = np.setdiff1d(self.classes, classes_test)
+train_idx = [i for i, el in enumerate(y) if el in classes_train]
+test_idx = [i for i, el in enumerate(y) if el in classes_test]
+
+X_train, y_train, X_test, y_test = X[train_idx], y[train_idx], X[test_idx], y[test_idx]
+X_train = torch.tensor(X_train, dtype=torch.float)
+X_test = torch.tensor(X_test, dtype=torch.float)
+y_train = torch.tensor(y_train, dtype=torch.long)
+y_test = torch.tensor(y_test, dtype=torch.long)

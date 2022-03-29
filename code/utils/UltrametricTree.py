@@ -1,10 +1,11 @@
 import numpy as np
 
 class SynthUltrametricTree():
-    def __init__(self, max_depth=12, p_flip=0.01, leaf_length=1000, shuffle_labels=True, noise_level=1):
+    def __init__(self, max_depth=12, p_flip=0.1, p_noise=0.05, leaf_length=1000, shuffle_labels=True, noise_level=1):
         self.leaves = []
         self.max_depth = max_depth
         self.p_flip = p_flip
+        self.p_noise = p_noise
         self.leaf_length = leaf_length
         self.ancestor_seq = np.random.randint(0, 2, self.leaf_length, dtype=bool)
         self.shuffle_labels = shuffle_labels
@@ -22,15 +23,16 @@ class SynthUltrametricTree():
         #self.dataset = {i: el for i, el in enumerate(grouper(self.leaves, group_size))} #incomplete='strict'))}
         self.labels = np.array([[el]*self.noise_level for el in labels]).flatten() 
         
-    def bit_flip(self, ancestor_seq):
-        random_seq = np.random.rand(len(self.ancestor_seq))
-        return [not el_res if el_rand < self.p_flip else el_res 
-                           for el_res, el_rand in zip(self.ancestor_seq, random_seq)]
+    def bit_flip(self, curr_ancestor_seq, p_flip):
+        random_seq = np.random.rand(len(curr_ancestor_seq))
+        res = [not el_res if el_rand < p_flip else el_res 
+                           for el_res, el_rand in zip(curr_ancestor_seq, random_seq)]
+        return res
 
     def create_tree(self, ancestor_seq, curr_depth, tree_list):
         current_depth = curr_depth + 1
-        left_child = self.bit_flip(ancestor_seq)
-        right_child = self.bit_flip(ancestor_seq)
+        left_child = self.bit_flip(ancestor_seq, self.p_flip)
+        right_child = self.bit_flip(ancestor_seq, self.p_flip)
         if current_depth == self.max_depth:
             self.leaves.append(left_child)
             self.leaves.append(right_child)
@@ -42,10 +44,13 @@ class SynthUltrametricTree():
     def compute_noisy_seq(self, seq):
         res_seqs = [seq]
         for i in range(self.noise_level-1):
-            res = seq.copy()
-            rand_id = np.random.randint(0, self.leaf_length)
-            res[rand_id] = not res[rand_id]
-            res_seqs.append(res)
+            #res = seq.copy()
+            #rand_id = np.random.randint(0, self.leaf_length)
+            #res[rand_id] = not res[rand_id]
+            #res_seqs.append(res)
+
+            res_seqs.append(self.bit_flip(seq, self.p_noise))
+
         return res_seqs
     
         

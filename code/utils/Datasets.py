@@ -8,9 +8,8 @@ import pytorch_lightning as pl
 from torchvision import transforms, utils
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 from util_functions import one_hot_labels
-from functions_markov import generate_markov_chain
+from functions_markov import generate_markov_chain, shuffle_blocks_v2
 from UltrametricTree import SynthUltrametricTree
-
 
 
 class MnistLinearDataset(Dataset):
@@ -42,6 +41,7 @@ class MnistLinearDataset(Dataset):
 
         return [sample_img, sample_label]
     
+
 class UltrametricMnistDataset(Dataset):
     """Ultrametric dataset"""
     
@@ -99,6 +99,7 @@ class MnistPredictDataset(Dataset):
 
         return sample_img
     
+
 class SynthPredictDataset(Dataset):
     """MnistLinearDataset dataset"""
     
@@ -128,13 +129,14 @@ class SynthPredictDataset(Dataset):
     
 
 class UltraMetricSampler(torch.utils.data.Sampler):
-    def __init__(self, data_source, chain, class_index, nb_classes):
+    def __init__(self, data_source, chain, class_index, nb_classes, b_len=0):
         self.data_source = data_source
         self.chain = chain
         self.class_index = class_index
         self.nb_classes = nb_classes
         self.total_length = 0
         self.temp_length = 0
+        self.b_len = b_len
         self.__iter__(dummy=True)
 
     def __iter__(self, dummy=False):
@@ -161,9 +163,11 @@ class UltraMetricSampler(torch.utils.data.Sampler):
         return self.curr_length
     
     def reset_sampler(self):
-        np.random.shuffle(self.chain[:self.total_length])
+        if self.b_len > 0:
+            self.chain[:self.total_length] = shuffle_blocks_v2(self.chain[:self.total_length], self.b_len)
         self.temp_length = 0
     
+
 class BinarySampler(torch.utils.data.Sampler):
     def __init__(self, data_source, class_index, chain, train=True):
         self.data_source = data_source
@@ -265,36 +269,37 @@ class MnistDataModule(pl.LightningDataModule):
         self.predict_ds = MnistPredictDataset(filtered_test_df, transform=None)
 
                                 
-
 class SynthDataModule(UMDataModule):
     def __init__(self, max_depth: int, data_dir: str = "./", batch_size_train: int=128, batch_size_test: int=1000, 
-                 num_workers: int=4, mode: str='rand', chain=None, leaf_length=1000, noise_level=1, p_flip=0.01,
-                 normalize_data=False, repeat_data=1, test_split=0.1):
+                 num_workers: int=4, mode: str='rand', chain=None, leaf_length=1000, noise_level=1, p_flip=0.1,
+                 p_noise=0.05, normalize_data=False, repeat_data=1, test_split=0.1, b_len=0):
         super().__init__(max_depth=max_depth, data_dir=data_dir, batch_size_train=batch_size_train, 
                         batch_size_test=batch_size_test, num_workers=num_workers, mode=mode, chain=chain)
         self.leaf_length = leaf_length
-        self.tree = SynthUltrametricTree(max_depth=max_depth, p_flip=p_flip, 
+        self.tree = SynthUltrametricTree(max_depth=max_depth, p_flip=p_flip, p_noise=p_noise, 
                                          leaf_length=leaf_length, shuffle_labels=True,
                                          noise_level=noise_level)
         self.normalize_data = normalize_data
         self.repeat_data = repeat_data
         self.test_split = test_split
+        self.b_len = b_len
                              
     def setup(self, stage = None):
         X, y = self.tree.leaves, self.tree.labels
         if self.normalize_data:
             X = np.array([el/np.sum(el) for el in X]) # normalize input
-        
+
         X = torch.tensor(X, dtype=torch.float)
         y = torch.tensor(y, dtype=torch.long)
         X_train, X_test, y_train, y_test = model_selection.train_test_split(X, y, test_size=self.test_split)
-        X_train = np.tile(X_train, (self.repeat_data, 1))
-        y_train = np.tile(y_train, self.repeat_data)
-        print(f"Train data size {X_train.shape}, {y_train.shape}, classes: {set(y_train)}")
-        print(f"Val data size {X_test.shape}, {y_test.shape}, classes: {set(y_test)}")
+        X_train = torch.tile(X_train, (self.repeat_data, 1))
+        y_train = torch.tile(y_train, (self.repeat_data,))
+        print(f"Train data size {list(X_train.size())}, {list(y_train.size())}, classes: {list(torch.unique(y_train).size())}")
+        print(f"Val data size {list(X_test.size())}, {list(y_test.size())}, classes: {list(torch.unique(y_test).size())}")
+        assert(np.intersect1d(set(y_train), set(y_test)).shape[0]==0)
 
         def prepare_target_data(y):
-            class_index = [np.where(y==class_label)[0] for class_label in self.classes]
+            class_index = [np.where(y==class_label)[0] for class_label in self.classes] 
             y = [one_hot_labels(el, self.nb_classes) for el in y]
             y = torch.stack(y)
             return y, class_index      
@@ -308,10 +313,10 @@ class SynthDataModule(UMDataModule):
         if self.mode == 'um':
             assert(len(set(self.markov_chain)) == self.tree.nb_classes) #assert all classes are represented in the Markov chain
             self.train_sampler = UltraMetricSampler(self.um_train_ds, self.markov_chain, train_class_index, 
-                                                    self.nb_classes)
+                                                    self.nb_classes, self.b_len)
 
         elif self.mode == 'split':
-            split_chain = np.random.randint(0, high=self.nb_classes, size=2000)
+            split_chain = np.random.randint(0, high=self.nb_classes, size=20000)
             self.train_sampler = BinarySampler(self.um_train_ds, train_class_index, split_chain, train=True)
             self.test_sampler = BinarySampler(self.test_ds, test_class_index, split_chain, train=False)
 

@@ -10,7 +10,7 @@ from torchmetrics.utilities.data import to_categorical
 from util_functions import make_confusion_matrix_figure, make_roc_curves_figure, print_metrics
 
 class FFNetwork(pl.LightningModule):
-    def __init__(self, input_size, hidden_size, nb_classes, mode, optimizer, learning_rate):
+    def __init__(self, input_size, hidden_size, nb_classes, mode, optimizer, lr):
         super().__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -30,9 +30,9 @@ class FFNetwork(pl.LightningModule):
 
     def configure_optimizers(self):
         if self.hparams.optimizer == 'adam':
-            optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.learning_rate)
+            optimizer = torch.optim.Adam(self.parameters(), lr=self.hparams.lr)
         elif self.hparams.optimizer == 'sgd':
-            optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.learning_rate, momentum=0.2)
+            optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.lr, momentum=0.2)
         
         return optimizer
     

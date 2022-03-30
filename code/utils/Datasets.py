@@ -292,7 +292,6 @@ class SynthDataModule(UMDataModule):
         self.repeat_data = repeat_data
         self.test_split = test_split
         self.b_len = b_len
-        print("Data_module_initialized")
                              
     def setup(self, stage = None):
         X, y = self.tree.leaves, self.tree.labels

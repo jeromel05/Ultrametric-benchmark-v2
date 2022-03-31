@@ -10,7 +10,7 @@ from torchmetrics.utilities.data import to_categorical
 from util_functions import make_confusion_matrix_figure, make_roc_curves_figure, print_metrics
 
 class FFNetwork(pl.LightningModule):
-    def __init__(self, input_size, hidden_size, nb_classes, mode, optimizer, lr):
+    def __init__(self, input_size, hidden_size, nb_classes, mode, optimizer, lr, lr_scheduler, eval_steps):
         super().__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -34,15 +34,15 @@ class FFNetwork(pl.LightningModule):
         elif self.hparams.optimizer == 'sgd':
             optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.lr, momentum=0.2)
         
-        scheduler = None
+        scheduler = []
         if self.hparams.lr_scheduler == "ReduceLROnPlateau":
             #factor = self.hparams.lr_factor
             #patience = self.hparams.lr_patience
-            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+            scheduler.append(torch.optim.lr_scheduler.ReduceLROnPlateau(
                 optimizer, mode="min", factor=0.2, patience=8
-            )
+            ))
         
-        return optimizer, scheduler
+        return [optimizer], scheduler
     
     def evaluate_metrics(self, preds, target, num_classes,
                          cm_figure=False, roc_figure=False):
@@ -93,27 +93,41 @@ class FFNetwork(pl.LightningModule):
         return loss
 
     def validation_step(self, val_batch, batch_idx):
-        x, y = val_batch
-        num_classes = y.size(1)
-        x = x.view(x.size(0), -1)
-        o = self.forward(x)
-        loss = F.binary_cross_entropy_with_logits(o, y)
-        self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        
-        target = to_categorical(y, argmax_dim=1)
-        
-        val_acc, val_ap, val_auroc_, val_cf_mat, val_roc_curve = self.evaluate_metrics(o, 
-                                                                    target, num_classes, cm_figure=True, roc_figure=True)
+        if (not self.hparams.mode == 'um') or (self.hparams.mode == 'um' and self.trainer.current_epoch == self.hparams.eval_steps[0]):
+            x, y = val_batch
+            num_classes = y.size(1)
+            x = x.view(x.size(0), -1)
+            o = self.forward(x)
+            loss = F.binary_cross_entropy_with_logits(o, y)
+            self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+            target = to_categorical(y, argmax_dim=1)
+            
+            val_acc, val_ap, val_auroc_, val_cf_mat, val_roc_curve = self.evaluate_metrics(o, 
+                                                                        target, num_classes, cm_figure=True, roc_figure=True)
 
-        self.log('val_acc', val_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log('val_ap', val_ap, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log('val_auroc', val_auroc_, on_step=False, on_epoch=True, prog_bar=False, logger=True)
-        tensorboard = self.logger.experiment
-        if num_classes > 16:
-            tensorboard.add_image("val_cf_mat", val_cf_mat, dataformats='HW', global_step=self.global_step)
-        else:
-            tensorboard.add_figure("val_cf_mat", val_cf_mat, global_step=self.global_step)
-            tensorboard.add_figure("val_roc_curve", val_roc_curve, global_step=self.global_step)
+            self.log('val_acc', val_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+            self.log('val_ap', val_ap, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+            self.log('val_auroc', val_auroc_, on_step=False, on_epoch=True, prog_bar=False, logger=True)
+            tensorboard = self.logger.experiment
+            if num_classes > 16:
+                tensorboard.add_image("val_cf_mat", val_cf_mat, dataformats='HW', global_step=self.global_step)
+            else:
+                tensorboard.add_figure("val_cf_mat", val_cf_mat, global_step=self.global_step)
+                tensorboard.add_figure("val_roc_curve", val_roc_curve, global_step=self.global_step)
+
+            if self.hparams.mode == 'um':
+                print()
+                print(f'UM RESET at epoch: {self.trainer.current_epoch}')
+                self.trainer.datamodule.train_dataloader().sampler.reset_sampler()
+                for layer in self.children():
+                    if hasattr(layer, 'reset_parameters'):
+                        #print(f"resetting layer: {layer}")
+                        layer.reset_parameters()
+
+                self.hparams.eval_steps = self.hparams.eval_steps[1:] #pop the first el bc we used it
+                if len(self.hparams.eval_steps) <= 1: 
+                    self.trainer.should_stop = True
+        
 
     def test_step(self, test_batch, batch_idx):
         x, y = test_batch
@@ -139,17 +153,7 @@ class FFNetwork(pl.LightningModule):
             self.trainer.datamodule.train_dataloader().sampler.update_curr_epoch_nb()
             self.trainer.datamodule.val_dataloader().sampler.update_curr_epoch_nb()
 
-        if self.hparams.mode == 'um': # and (not self.current_epoch % 3):
-            self.trainer.datamodule.train_dataloader().sampler.reset_sampler()
-            for layer in self.children():
-                if hasattr(layer, 'reset_parameters'):
-                    #print(f"resetting layer: {layer}")
-                    layer.reset_parameters()
-
     def get_progress_bar_dict(self):
             items = super().get_progress_bar_dict()
-            # discard the version number
             items.pop("v_num", None)
-            # discard the loss
-            #items.pop("loss", None)
             return items

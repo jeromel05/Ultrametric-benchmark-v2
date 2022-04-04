@@ -96,7 +96,7 @@ def run():
             callbacks.append(checkpoint_callback)
 
         if args.patience > 0:
-            callbacks.append(EarlyStopping(monitor="val_acc", min_delta=0.00, baseline=0.95, verbose=False, mode="max")) #  patience=args.patience
+            callbacks.append(EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=False, mode="max", patience=args.patience))
 
         logger = TensorBoardLogger(checkpoint_path, name=f"metrics_{args.dataset}", version=f"fold_{seed}")
         if args.mode == 'um':

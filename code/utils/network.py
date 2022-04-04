@@ -21,6 +21,7 @@ class FFNetwork(pl.LightningModule):
 
         self.save_hyperparameters()
 
+
     def forward(self, x):
         hidden = self.l1(x)
         relu = self.relu(hidden)
@@ -93,7 +94,6 @@ class FFNetwork(pl.LightningModule):
         return loss
 
     def validation_step(self, val_batch, batch_idx):
-        self.log('val_acc', 0.0, on_step=False, on_epoch=True, prog_bar=True, logger=True) # to be able to use callbacks
         um_cond = (self.hparams.mode == 'um' and np.isclose(self.trainer.current_epoch, self.hparams.eval_steps[0], atol=2))
         
         if ((not self.hparams.mode == 'um') or um_cond):

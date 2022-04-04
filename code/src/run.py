@@ -60,6 +60,8 @@ def run():
     parser.add_argument('--job_id', type=str, default="", help="define level of verbosity")
 
 
+
+
     args = parser.parse_args()
     print("All args: ", args)
     nb_classes = 2**args.max_tree_depth
@@ -93,6 +95,9 @@ def run():
                                                 save_top_k=1, mode=optim_mode)
             callbacks.append(checkpoint_callback)
 
+        if args.patience > 0:
+            callbacks.append(EarlyStopping(monitor="val_acc", min_delta=0.00, baseline=0.95, verbose=False, mode="max")) #  patience=args.patience
+
         logger = TensorBoardLogger(checkpoint_path, name=f"metrics_{args.dataset}", version=f"fold_{seed}")
         if args.mode == 'um':
             data_module.set_markov_chain(args, seed)
@@ -101,7 +106,7 @@ def run():
                             num_nodes=1, precision=32, logger=logger, max_epochs=args.max_epochs,
                             callbacks=callbacks,
                             log_every_n_steps=nb_batches_per_epoch, 
-                            check_val_every_n_epoch=1)
+                            check_val_every_n_epoch=args.eval_freq)
                             #limit_val_batches=limit_val_batches) #, fast_dev_run=4)
         
         if args.auto_lr_find:
@@ -146,8 +151,6 @@ def find_lr(trainer, model, checkpoint_path_fold, data_module):
 
 def def_callbacks(args):
     const_callbacks = []
-    if args.patience > 0:
-        const_callbacks.append(EarlyStopping(monitor="val_acc", min_delta=0.00, patience=args.patience, verbose=False, mode="max"))
     progressbar_callback = TQDMProgressBar(refresh_rate=10, process_position=0)
     const_callbacks.append(progressbar_callback)
     lr_callback = LearningRateMonitor(logging_interval='epoch', log_momentum=False)

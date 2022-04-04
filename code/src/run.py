@@ -40,7 +40,7 @@ def run():
     parser.add_argument('--p_noise', type=float, default=0.05, help="define level of verbosity")
 
     parser.add_argument('--hidden_size', type=int, default=1000, help="define level of verbosity")
-    parser.add_argument('--lr', type=float, default=0.001, help="define level of verbosity")
+    parser.add_argument('--lr', type=float, default=0.01, help="define level of verbosity")
     parser.add_argument('--max_epochs', type=int, default=100, help="define level of verbosity")
     parser.add_argument('--generate_chain', action='store_true', help="define level of verbosity")
     parser.add_argument('--nb_folds', type=int, default=1, help="define level of verbosity")
@@ -56,13 +56,15 @@ def run():
     parser.add_argument('--auto_lr_find', action='store_true', help="define level of verbosity")
     parser.add_argument('--patience', type=int, default=0, help="define level of verbosity")
     parser.add_argument('--lr_scheduler', type=str, default="none", choices=['none', 'reduce_lr'], help="define datset to use")
-    parser.add_argument('--eval_steps', nargs='+', type=int, help="define level of verbosity")
+    parser.add_argument('--eval_freq', type=int, default=2, help="define level of verbosity")
+    parser.add_argument('--job_id', type=str, default="", help="define level of verbosity")
 
 
     args = parser.parse_args()
     print("All args: ", args)
     nb_classes = 2**args.max_tree_depth
-    nb_batches_per_epoch = max(int(nb_classes * args.noise_level / (args.batch_size_train) -4), 1)
+    nb_batches_per_epoch = max(int(nb_classes * args.noise_level / (args.batch_size_train) - 4), 1)
+    eval_steps = np.arange(0, args.max_epochs / args.eval_freq, 1) * args.eval_freq
     const_callbacks = def_callbacks(args)
     checkpoint_path = def_checkpoint_path(args)
 
@@ -74,7 +76,7 @@ def run():
         data_module = create_data_modules(args, args.dataset)
         model = FFNetwork(input_size=args.input_size, hidden_size=args.hidden_size, nb_classes=nb_classes, 
                         mode=args.mode, optimizer=args.optimizer, lr=args.lr, lr_scheduler=args.lr_scheduler,
-                        eval_steps=args.eval_steps)
+                        eval_steps=eval_steps)
         
         print(f'Running mode: {args.mode} seed: {seed}')
         checkpoint_folder_name = f"{args.mode}_fold_{seed}/"
@@ -84,6 +86,7 @@ def run():
         print(f'Optimizing on {args.metric} mode {optim_mode}')
 
         callbacks=const_callbacks.copy()
+        checkpoint_callback=None
         if not args.mode == 'um':
             checkpoint_callback = ModelCheckpoint(monitor=args.metric, dirpath=checkpoint_path_fold,
                                                 filename="{epoch:02d}_{val_loss:.2f}",
@@ -98,7 +101,7 @@ def run():
                             num_nodes=1, precision=32, logger=logger, max_epochs=args.max_epochs,
                             callbacks=callbacks,
                             log_every_n_steps=nb_batches_per_epoch, 
-                            check_val_every_n_epoch=2)
+                            check_val_every_n_epoch=1)
                             #limit_val_batches=limit_val_batches) #, fast_dev_run=4)
         
         if args.auto_lr_find:
@@ -110,10 +113,10 @@ def run():
         if not checkpoint_callback == None:
             best_model_path = checkpoint_callback.best_model_path
             print(f"{bcolors.OKCYAN} best_model_path: {best_model_path} {bcolors.ENDC}")
-        try:
-            model = FFNetwork.load_from_checkpoint(checkpoint_callback.best_model_path)
-        except IsADirectoryError:
-            print('No best model saved: using last checkpoint as best one.')
+            try:
+                model = FFNetwork.load_from_checkpoint(checkpoint_callback.best_model_path)
+            except IsADirectoryError:
+                print('No best model saved: using last checkpoint as best one.')
 
         model.eval()
         trainer.test(model, dataloaders=data_module.val_dataloader())
@@ -146,24 +149,22 @@ def def_callbacks(args):
     if args.patience > 0:
         const_callbacks.append(EarlyStopping(monitor="val_acc", min_delta=0.00, patience=args.patience, verbose=False, mode="max"))
     progressbar_callback = TQDMProgressBar(refresh_rate=10, process_position=0)
-    #progressbar_callback2 = LitProgressBar()
     const_callbacks.append(progressbar_callback)
-    #const_callbacks.append(progressbar_callback2)
     lr_callback = LearningRateMonitor(logging_interval='epoch', log_momentum=False)
     const_callbacks.append(lr_callback)
     #if args.mode == 'um':
-    #    um_callback = UltraMetricCallback(args.eval_steps)
+    #    um_callback = UltraMetricCallback(args.eval_freq)
     #    const_callbacks.append(um_callback)
 
     return const_callbacks
 
 def def_checkpoint_path(args):
     now = datetime.now()
-    dt_string = now.strftime("%d%m%Y_%H%M%S")
-    checkpoint_path = os.path.join(args.logfolder, f"ckpt_{dt_string}_{args.dataset}_{args.mode}_blen{args.b_len}_d{args.max_tree_depth}/")
+    dt_string = now.strftime("%d%m_%H%M")
+    ckpt_name = f"ckpt_{args.job_id}_{dt_string}_{args.dataset}_{args.mode}_b{args.b_len}_d{args.max_tree_depth}/"
+    checkpoint_path = os.path.join(args.logfolder, ckpt_name)
     print(f"Saving checkpoints at: {checkpoint_path}")
     return checkpoint_path
-
 
 if __name__ == '__main__':
     run()

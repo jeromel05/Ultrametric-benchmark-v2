@@ -39,7 +39,7 @@ class FFNetwork(pl.LightningModule):
             #factor = self.hparams.lr_factor
             #patience = self.hparams.lr_patience
             scheduler.append(torch.optim.lr_scheduler.ReduceLROnPlateau(
-                optimizer, mode="min", factor=0.2, patience=8
+                optimizer, mode="min", factor=0.2, patience=10
             ))
         
         return [optimizer], scheduler
@@ -64,7 +64,7 @@ class FFNetwork(pl.LightningModule):
             roc_curve = make_roc_curves_figure(fpr, tpr, num_classes)
         
         return acc, ap, auroc_, cf_mat, roc_curve
-        
+  
     def training_step(self, train_batch, batch_idx):
         x, y = train_batch
         num_classes = y.size(1)
@@ -93,7 +93,10 @@ class FFNetwork(pl.LightningModule):
         return loss
 
     def validation_step(self, val_batch, batch_idx):
-        if (not self.hparams.mode == 'um') or (self.hparams.mode == 'um' and self.trainer.current_epoch == self.hparams.eval_steps[0]):
+        self.log('val_acc', 0.0, on_step=False, on_epoch=True, prog_bar=True, logger=True) # to be able to use callbacks
+        um_cond = (self.hparams.mode == 'um' and np.isclose(self.trainer.current_epoch, self.hparams.eval_steps[0], atol=2))
+        
+        if ((not self.hparams.mode == 'um') or um_cond):
             x, y = val_batch
             num_classes = y.size(1)
             x = x.view(x.size(0), -1)
@@ -116,18 +119,18 @@ class FFNetwork(pl.LightningModule):
                 tensorboard.add_figure("val_roc_curve", val_roc_curve, global_step=self.global_step)
 
             if self.hparams.mode == 'um':
-                print()
-                print(f'UM RESET at epoch: {self.trainer.current_epoch}')
+                #print(f'UM RESET at epoch: {self.trainer.current_epoch}')
                 self.trainer.datamodule.train_dataloader().sampler.reset_sampler()
                 for layer in self.children():
                     if hasattr(layer, 'reset_parameters'):
                         #print(f"resetting layer: {layer}")
                         layer.reset_parameters()
 
-                self.hparams.eval_steps = self.hparams.eval_steps[1:] #pop the first el bc we used it
-                if len(self.hparams.eval_steps) <= 1: 
+                self.hparams.eval_steps = self.hparams.eval_steps[1:]
+                self.hparams.eval_steps[0] = self.hparams.eval_steps[0] + self.trainer.current_epoch
+                if len(self.hparams.eval_steps) <= 1:
                     self.trainer.should_stop = True
-        
+
 
     def test_step(self, test_batch, batch_idx):
         x, y = test_batch
@@ -147,13 +150,8 @@ class FFNetwork(pl.LightningModule):
 
         print_metrics(test_acc, test_ap, test_auroc_, test_cf_mat, test_roc_curve, save_figs = (num_classes <= 16))
         
-        
+
     def validation_epoch_end(self, outputs):
         if self.hparams.mode == 'split':
             self.trainer.datamodule.train_dataloader().sampler.update_curr_epoch_nb()
             self.trainer.datamodule.val_dataloader().sampler.update_curr_epoch_nb()
-
-    def get_progress_bar_dict(self):
-            items = super().get_progress_bar_dict()
-            items.pop("v_num", None)
-            return items

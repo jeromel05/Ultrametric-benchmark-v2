@@ -55,19 +55,17 @@ def run():
     parser.add_argument('--metric', type=str, default="val_loss", choices=['val_acc', 'val_loss', 'train_acc'], help="define datset to use")
     parser.add_argument('--auto_lr_find', action='store_true', help="define level of verbosity")
     parser.add_argument('--patience', type=int, default=0, help="define level of verbosity")
-    parser.add_argument('--lr_scheduler', type=str, default="none", choices=['none', 'reduce_lr'], help="define datset to use")
+    parser.add_argument('--lr_scheduler', type=str, default=None, choices=['reduce_lr'], help="define datset to use")
     parser.add_argument('--eval_freq', type=int, default=2, help="define level of verbosity")
     parser.add_argument('--job_id', type=str, default="", help="define level of verbosity")
-
-
 
 
     args = parser.parse_args()
     print("All args: ", args)
     nb_classes = 2**args.max_tree_depth
     nb_batches_per_epoch = max(int(nb_classes * args.noise_level / (args.batch_size_train) - 4), 1)
-    eval_steps = np.arange(0, args.max_epochs / args.eval_freq, 1) * args.eval_freq
-    const_callbacks = def_callbacks(args)
+    eval_steps = np.arange(0, int(args.max_epochs / args.eval_freq), 1) * args.eval_freq
+    print(f"Evaluation at steps: {eval_steps[0:6]}...")
     checkpoint_path = def_checkpoint_path(args)
 
     # training
@@ -81,22 +79,7 @@ def run():
                         eval_steps=eval_steps)
         
         print(f'Running mode: {args.mode} seed: {seed}')
-        checkpoint_folder_name = f"{args.mode}_fold_{seed}/"
-        checkpoint_path_fold = os.path.join(checkpoint_path, checkpoint_folder_name)
-
-        optim_mode = 'max' if 'acc' in args.metric else 'min'
-        print(f'Optimizing on {args.metric} mode {optim_mode}')
-
-        callbacks=const_callbacks.copy()
-        checkpoint_callback=None
-        if not args.mode == 'um':
-            checkpoint_callback = ModelCheckpoint(monitor=args.metric, dirpath=checkpoint_path_fold,
-                                                filename="{epoch:02d}_{val_loss:.2f}",
-                                                save_top_k=1, mode=optim_mode)
-            callbacks.append(checkpoint_callback)
-
-        if args.patience > 0:
-            callbacks.append(EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=False, mode="max", patience=args.patience))
+        callbacks, checkpoint_callback = def_callbacks(args, checkpoint_path, seed)
 
         logger = TensorBoardLogger(checkpoint_path, name=f"metrics_{args.dataset}", version=f"fold_{seed}")
         if args.mode == 'um':
@@ -107,12 +90,12 @@ def run():
                             callbacks=callbacks,
                             log_every_n_steps=nb_batches_per_epoch, 
                             check_val_every_n_epoch=args.eval_freq)
-                            #limit_val_batches=limit_val_batches) #, fast_dev_run=4)
+                            #, fast_dev_run=4)
         
         if args.auto_lr_find:
             model.hparams.lr = find_lr(trainer=trainer, model=model, checkpoint_path_fold=checkpoint_path, data_module=data_module)
-        #other more concise alternative
-        #trainer.tune(model, datamodule=data_module)
+            #other more concise alternative
+            #trainer.tune(model, datamodule=data_module)
 
         trainer.fit(model, data_module)
         if not checkpoint_callback == None:
@@ -125,7 +108,6 @@ def run():
 
         model.eval()
         trainer.test(model, dataloaders=data_module.val_dataloader())
-        #print("Best Val Acc", checkpoint_callback.best_model_score.detach())
 
 def create_data_modules(args, dataset_name: str):
         if dataset_name == 'mnist':
@@ -149,17 +131,30 @@ def find_lr(trainer, model, checkpoint_path_fold, data_module):
     fig.savefig(join(checkpoint_path_fold, "lr_plot.jpg"))
     return lr_finder.suggestion()
 
-def def_callbacks(args):
-    const_callbacks = []
-    progressbar_callback = TQDMProgressBar(refresh_rate=10, process_position=0)
-    const_callbacks.append(progressbar_callback)
-    lr_callback = LearningRateMonitor(logging_interval='epoch', log_momentum=False)
-    const_callbacks.append(lr_callback)
-    #if args.mode == 'um':
-    #    um_callback = UltraMetricCallback(args.eval_freq)
-    #    const_callbacks.append(um_callback)
+def def_callbacks(args, checkpoint_path, seed):
+    callbacks=[]
+    checkpoint_callback=None
+    checkpoint_folder_name = f"{args.mode}_fold_{seed}/"
+    checkpoint_path_fold = os.path.join(checkpoint_path, checkpoint_folder_name)
 
-    return const_callbacks
+    optim_mode = 'max' if 'acc' in args.metric else 'min'
+    print(f'Optimizing on {args.metric} mode {optim_mode}')
+    if not args.mode == 'um':
+            checkpoint_callback = ModelCheckpoint(monitor=args.metric, dirpath=checkpoint_path_fold,
+                                                filename="{epoch:02d}_{val_loss:.2f}",
+                                                save_top_k=1, mode=optim_mode)
+            callbacks.append(checkpoint_callback)
+
+    if args.patience > 1:
+        callbacks.append(EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=True, mode="max", patience=args.patience))
+
+    progressbar_callback = TQDMProgressBar(refresh_rate=0, process_position=0)
+    callbacks.append(progressbar_callback)
+    if args.lr_scheduler == "reduce_lr":
+        lr_callback = LearningRateMonitor(logging_interval='epoch', log_momentum=False)
+        callbacks.append(lr_callback)
+    
+    return callbacks, checkpoint_callback
 
 def def_checkpoint_path(args):
     now = datetime.now()

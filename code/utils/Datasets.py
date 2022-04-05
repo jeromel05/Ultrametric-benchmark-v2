@@ -9,7 +9,8 @@ from torch.utils.data import Dataset, DataLoader
 import pytorch_lightning as pl
 from torchvision import transforms, utils
 from torch.utils.data import Dataset, DataLoader, TensorDataset
-from util_functions import one_hot_labels
+from torchmetrics.utilities.data import to_onehot
+
 from functions_markov import generate_markov_chain, shuffle_blocks_v2
 from UltrametricTree import SynthUltrametricTree
 
@@ -159,6 +160,7 @@ class UltraMetricSampler(torch.utils.data.Sampler):
         if not dummy:
             self.total_length = self.total_length + len(um_indexes)
             self.temp_length = self.temp_length + len(um_indexes) # keep 2 separate incase we want to reset only every x epochs
+
         return iter(um_indexes)
 
     def __len__(self):
@@ -252,7 +254,7 @@ class MnistDataModule(pl.LightningDataModule):
             filtered_ds=[el for el in ds if el[1] in self.classes] # Remove classes 8,9 to have the right nb
             filtered_df = pd.DataFrame(filtered_ds, columns=[["img", "label"]])
             class_index = [filtered_df.loc[filtered_df["label"].values == class_label].index for class_label in self.classes]
-            filtered_df["label"] = filtered_df["label"].apply(one_hot_labels, args=(self.nb_classes,), axis=1)
+            filtered_df["label"] = to_onehot(filtered_df["label"], num_classes=self.nb_classes)
             return filtered_df, class_index
 
         filtered_train_df, train_class_index = prepare_data(train_ds)
@@ -299,24 +301,22 @@ class SynthDataModule(UMDataModule):
             X = np.array([el/np.sum(el) for el in X]) # normalize input
 
         X = torch.tensor(X, dtype=torch.float)
-        y = torch.tensor(y, dtype=torch.long)
+        y = torch.tensor(y, dtype=torch.float)
         X_train, X_test, y_train, y_test = model_selection.train_test_split(X, y, test_size=self.test_split)
         X_train = torch.tile(X_train, (self.repeat_data, 1))
         y_train = torch.tile(y_train, (self.repeat_data,))
-        print(f"Train data size {list(X_train.size())}, {list(y_train.size())}, classes: {list(torch.unique(y_train).size())}")
-        print(f"Val data size {list(X_test.size())}, {list(y_test.size())}, classes: {list(torch.unique(y_test).size())}")
-        assert(np.intersect1d(set(y_train), set(y_test)).shape[0]==0)
+        print(f"Train data size {list(X_train.size())}, {list(y_train.size())}, classes: {list(torch.unique(y_train).size())[0]}")
+        print(f"Val data size {list(X_test.size())}, {list(y_test.size())}, classes: {list(torch.unique(y_test).size())[0]}")
 
         def prepare_target_data(y):
             class_index = [np.where(y==class_label)[0] for class_label in self.classes] 
-            y = [one_hot_labels(el, self.nb_classes) for el in y]
-            y = torch.stack(y)
-            return y, class_index      
+            y = to_onehot(y, self.nb_classes)
+            return y, class_index
 
         y_train, train_class_index = prepare_target_data(y_train)
-        y_test, test_class_index = prepare_target_data(y_test)    
+        y_test, test_class_index = prepare_target_data(y_test)
     
-        self.um_train_ds=TensorDataset(X_train, y_train)            
+        self.um_train_ds=TensorDataset(X_train, y_train)
         self.test_ds=TensorDataset(X_test, y_test)
 
         if self.mode == 'um':

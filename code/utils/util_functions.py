@@ -16,12 +16,6 @@ class bcolors:
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
-    
-# one hot encoding for classes
-def one_hot_labels(label, nb_classes):
-    one_hot_vec = torch.zeros(nb_classes, dtype=torch.float)
-    one_hot_vec[label]=torch.tensor(1, dtype=torch.float)
-    return one_hot_vec
 
 def plot_to_image(figure):
     """Converts the matplotlib plot specified by 'figure' to a PNG image and

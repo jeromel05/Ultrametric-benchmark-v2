@@ -71,7 +71,7 @@ class FFNetwork(pl.LightningModule):
         num_classes = y.size(1)
         x = x.view(x.size(0), -1)
         o = self.forward(x)
-        loss = F.binary_cross_entropy_with_logits(o, y)
+        loss = F.binary_cross_entropy(o, y)
         self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=False, logger=True)
         
         target = to_categorical(y, argmax_dim=1)
@@ -94,23 +94,24 @@ class FFNetwork(pl.LightningModule):
         return loss
 
     def validation_step(self, val_batch, batch_idx):
-        um_cond = (self.hparams.mode == 'um' and np.isclose(self.trainer.current_epoch, self.hparams.eval_steps[0], atol=2))
-        
+        um_cond = (self.hparams.mode == 'um' and np.isclose(self.trainer.current_epoch, self.hparams.eval_steps[0], atol=1.1))
         if ((not self.hparams.mode == 'um') or um_cond):
             x, y = val_batch
+
             num_classes = y.size(1)
             x = x.view(x.size(0), -1)
             o = self.forward(x)
-            loss = F.binary_cross_entropy_with_logits(o, y)
+            loss = F.binary_cross_entropy(o, y)
             self.log('val_loss', loss, on_step=False, on_epoch=True, prog_bar=True, logger=True)
             target = to_categorical(y, argmax_dim=1)
             
             val_acc, val_ap, val_auroc_, val_cf_mat, val_roc_curve = self.evaluate_metrics(o, 
                                                                         target, num_classes, cm_figure=True, roc_figure=True)
-
             self.log('val_acc', val_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
             self.log('val_ap', val_ap, on_step=False, on_epoch=True, prog_bar=True, logger=True)
             self.log('val_auroc', val_auroc_, on_step=False, on_epoch=True, prog_bar=False, logger=True)
+
+            print(f"Validation at epoch: {self.trainer.current_epoch}, loss: {loss:.3}, acc: {val_acc:.3}")
             tensorboard = self.logger.experiment
             if num_classes > 16:
                 tensorboard.add_image("val_cf_mat", val_cf_mat, dataformats='HW', global_step=self.global_step)
@@ -127,8 +128,9 @@ class FFNetwork(pl.LightningModule):
                         layer.reset_parameters()
 
                 self.hparams.eval_steps = self.hparams.eval_steps[1:]
-                self.hparams.eval_steps[0] = self.hparams.eval_steps[0] + self.trainer.current_epoch
+                self.hparams.eval_steps[0] = int(self.hparams.eval_steps[0] + self.trainer.current_epoch)
                 if len(self.hparams.eval_steps) <= 1:
+                    print("Stopping because no more steps in eval steps list")
                     self.trainer.should_stop = True
 
 
@@ -137,7 +139,7 @@ class FFNetwork(pl.LightningModule):
         num_classes = y.size(1)
         x = x.view(x.size(0), -1)
         o = self.forward(x)
-        loss = F.binary_cross_entropy_with_logits(o, y)
+        loss = F.binary_cross_entropy(o, y)
         self.log('test_loss', loss, on_step=False, on_epoch=True, prog_bar=False, logger=True)
         
         target = to_categorical(y, argmax_dim=1)

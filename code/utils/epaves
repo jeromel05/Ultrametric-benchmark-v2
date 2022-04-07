@@ -8,3 +8,25 @@ X_train = torch.tensor(X_train, dtype=torch.float)
 X_test = torch.tensor(X_test, dtype=torch.float)
 y_train = torch.tensor(y_train, dtype=torch.long)
 y_test = torch.tensor(y_test, dtype=torch.long)
+
+def training_epoch_end(self, outputs):
+        if self.hparams.mode == 'vvvv': # not used
+            #val_batch=next(iter(self.trainer.datamodule.val_dataloader()))
+            #batch_idx=self.trainer.current_epoch
+            print('launch val step manually')
+            self.trainer.validate(model=self, dataloaders=self.trainer.datamodule.val_dataloader())
+
+        if self.hparams.mode == 'bbbbb': # not used
+            val_batch=next(iter(self.trainer.datamodule.val_dataloader()))
+            batch_idx=self.trainer.current_epoch
+            print('launch val step manually')
+            self.validation_step(val_batch=val_batch, batch_idx=batch_idx)
+    
+    #def on_train_start(self) -> None:
+        #print("222222")
+        #self.trainer.datamodule.train_dataloader().sampler.reset_lengths()
+
+replace_idx = np.where(self.hparams.eval_steps == self.trainer.current_epoch)[0][-1]
+self.hparams.eval_steps = self.hparams.eval_steps[replace_idx+1:]
+self.hparams.eval_steps[0] = int(self.hparams.eval_steps[0] + self.trainer.current_epoch)
+if self.hparams.eval_steps[0] == 1: self.hparams.eval_steps = self.hparams.eval_steps[1:]

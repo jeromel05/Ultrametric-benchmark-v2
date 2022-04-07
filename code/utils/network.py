@@ -19,6 +19,8 @@ class FFNetwork(pl.LightningModule):
         self.l2 = nn.Linear(self.hidden_size, nb_classes)
         self.softmax = nn.Softmax(dim = 1)
 
+        self.run_val=False
+
         self.save_hyperparameters()
 
 
@@ -45,19 +47,21 @@ class FFNetwork(pl.LightningModule):
         
         return [optimizer], scheduler
     
-    def evaluate_metrics(self, preds, target, num_classes,
+    def evaluate_metrics(self, preds, target, num_classes, compute_cf_mat=False,
                          cm_figure=False, roc_figure=False):
         categorical_preds = to_categorical(preds, argmax_dim=1)
 
         acc = accuracy(preds, target, average='micro', num_classes=num_classes)
         ap = average_precision(preds, target, num_classes=num_classes, average='macro')
         auroc_ = auroc(preds, target, num_classes=num_classes, average='macro')
-        if (not cm_figure) or num_classes > 16:
-            cf_mat = confusion_matrix(preds, target, num_classes=num_classes) #, normalize='true') # causes nan
-        else:
-            cf_mat = metrics.confusion_matrix(target.cpu().numpy(), categorical_preds.cpu().numpy(), labels=np.arange(num_classes))
-            cf_mat = make_confusion_matrix_figure(cf_mat, np.arange(num_classes))
-            #cf_mat = plot_to_image(cf_mat)
+        cf_mat = None
+        if compute_cf_mat:
+            if (not cm_figure) or num_classes > 16:
+                cf_mat = confusion_matrix(preds, target, num_classes=num_classes) #, normalize='true') # causes nan
+            else:
+                cf_mat = metrics.confusion_matrix(target.cpu().numpy(), categorical_preds.cpu().numpy(), labels=np.arange(num_classes))
+                cf_mat = make_confusion_matrix_figure(cf_mat, np.arange(num_classes))
+                #cf_mat = plot_to_image(cf_mat)
         
         roc_curve = roc(preds, target, num_classes=num_classes)
         fpr, tpr, _ = roc_curve
@@ -68,6 +72,9 @@ class FFNetwork(pl.LightningModule):
   
     def training_step(self, train_batch, batch_idx):
         x, y = train_batch
+        #print('train: ', self.trainer.current_epoch, x.size())
+        self.run_val = True if(x.size(0) < self.trainer.datamodule.batch_size_train) else False
+        # or nb_batch == max_batches_per_epoch
         num_classes = y.size(1)
         x = x.view(x.size(0), -1)
         o = self.forward(x)
@@ -76,28 +83,28 @@ class FFNetwork(pl.LightningModule):
         
         target = to_categorical(y, argmax_dim=1)
         
-        roc_figure = True if (self.global_step % 300 == 0) and (num_classes <= 16) else False
+        #roc_figure = True if (self.global_step % 300 == 0) and (num_classes <= 16) else False
+        roc_figure=False
         train_acc, train_ap, train_auroc, train_cf_mat, train_roc = self.evaluate_metrics(o, target, num_classes, 
-                                                                            cm_figure=False, roc_figure=roc_figure)
+                                                                compute_cf_mat=False,cm_figure=False, roc_figure=roc_figure)
         
         self.log('train_acc', train_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         self.log('train_ap', train_ap, on_step=False, on_epoch=True, prog_bar=False, logger=True)
         self.log('train_auroc', train_auroc, on_step=False, on_epoch=True, prog_bar=False, logger=True)
         
-        tensorboard = self.logger.experiment
-        tensorboard.add_image("train_cf_mat", train_cf_mat, dataformats='HW', global_step=self.global_step)
-        #tensorboard.add_figure("train_cf_mat", train_cf_mat)
+        #tensorboard = self.logger.experiment
+        #tensorboard.add_image("train_cf_mat", train_cf_mat, dataformats='HW', global_step=self.global_step)
         
-        if num_classes <= 16 and roc_figure:
-            tensorboard.add_figure("train_roc_curve", train_roc, global_step=self.global_step)
+        #if num_classes <= 16 and roc_figure:
+        #    tensorboard.add_figure("train_roc_curve", train_roc, global_step=self.global_step)
         
         return loss
 
     def validation_step(self, val_batch, batch_idx):
-        um_cond = (self.hparams.mode == 'um' and np.isclose(self.trainer.current_epoch, self.hparams.eval_steps[0], atol=1.1))
-        if ((not self.hparams.mode == 'um') or um_cond):
+        #print('val: ', self.trainer.current_epoch, self.hparams.eval_steps[0:4])
+        um_cond = (self.hparams.mode == 'um' and (self.trainer.current_epoch in self.hparams.eval_steps))
+        if ((not self.hparams.mode == 'um') or (um_cond and self.run_val)):
             x, y = val_batch
-
             num_classes = y.size(1)
             x = x.view(x.size(0), -1)
             o = self.forward(x)
@@ -106,32 +113,20 @@ class FFNetwork(pl.LightningModule):
             target = to_categorical(y, argmax_dim=1)
             
             val_acc, val_ap, val_auroc_, val_cf_mat, val_roc_curve = self.evaluate_metrics(o, 
-                                                                        target, num_classes, cm_figure=True, roc_figure=True)
+                                                                target, num_classes, compute_cf_mat=False,
+                                                                cm_figure=False, roc_figure=False)
             self.log('val_acc', val_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
             self.log('val_ap', val_ap, on_step=False, on_epoch=True, prog_bar=True, logger=True)
             self.log('val_auroc', val_auroc_, on_step=False, on_epoch=True, prog_bar=False, logger=True)
 
-            print(f"Validation at epoch: {self.trainer.current_epoch}, loss: {loss:.3}, acc: {val_acc:.3}")
-            tensorboard = self.logger.experiment
-            if num_classes > 16:
-                tensorboard.add_image("val_cf_mat", val_cf_mat, dataformats='HW', global_step=self.global_step)
-            else:
-                tensorboard.add_figure("val_cf_mat", val_cf_mat, global_step=self.global_step)
-                tensorboard.add_figure("val_roc_curve", val_roc_curve, global_step=self.global_step)
+            print(f"Val at epoch: {self.trainer.current_epoch}, loss: {loss:.3}, acc: {val_acc:.3}")
+            if not val_cf_mat == None:
+                self.log_figures(num_classes, val_cf_mat, val_roc_curve)
 
             if self.hparams.mode == 'um':
                 #print(f'UM RESET at epoch: {self.trainer.current_epoch}')
-                self.trainer.datamodule.train_dataloader().sampler.reset_sampler()
-                for layer in self.children():
-                    if hasattr(layer, 'reset_parameters'):
-                        #print(f"resetting layer: {layer}")
-                        layer.reset_parameters()
-
-                self.hparams.eval_steps = self.hparams.eval_steps[1:]
-                self.hparams.eval_steps[0] = int(self.hparams.eval_steps[0] + self.trainer.current_epoch)
-                if len(self.hparams.eval_steps) <= 1:
-                    print("Stopping because no more steps in eval steps list")
-                    self.trainer.should_stop = True
+                self.reset_network_sampler()
+                self.run_val=False
 
 
     def test_step(self, test_batch, batch_idx):
@@ -144,16 +139,36 @@ class FFNetwork(pl.LightningModule):
         
         target = to_categorical(y, argmax_dim=1)
         test_acc, test_ap, test_auroc_, test_cf_mat, test_roc_curve = self.evaluate_metrics(o, 
-                                                        target, num_classes, cm_figure=True, roc_figure=True)
+                                                        target, num_classes, compute_cf_mat=True, 
+                                                        cm_figure=True, roc_figure=True)
 
         self.log('test_acc', test_acc, on_step=False, on_epoch=True, prog_bar=False, logger=True)
         self.log('test_ap', test_ap, on_step=False, on_epoch=True, prog_bar=False, logger=True)
         self.log('test_auroc', test_auroc_, on_step=False, on_epoch=True, prog_bar=False, logger=True)
 
-        print_metrics(test_acc, test_ap, test_auroc_, test_cf_mat, test_roc_curve, save_figs = (num_classes <= 16))
+        #print_metrics(test_acc, test_ap, test_auroc_, test_cf_mat, test_roc_curve, save_figs = (num_classes <= 16))
         
 
     def validation_epoch_end(self, outputs):
         if self.hparams.mode == 'split':
             self.trainer.datamodule.train_dataloader().sampler.update_curr_epoch_nb()
             self.trainer.datamodule.val_dataloader().sampler.update_curr_epoch_nb()
+        
+    def log_figures(self, num_classes, val_cf_mat, val_roc_curve):
+        tensorboard = self.logger.experiment
+        if num_classes > 16:
+            tensorboard.add_image("val_cf_mat", val_cf_mat, dataformats='HW', global_step=self.global_step)
+        else:
+            tensorboard.add_figure("val_cf_mat", val_cf_mat, global_step=self.global_step)
+            tensorboard.add_figure("val_roc_curve", val_roc_curve, global_step=self.global_step)
+
+    def reset_network_sampler(self): 
+        self.trainer.datamodule.train_dataloader().sampler.reset_sampler()
+        for layer in self.children():
+            if hasattr(layer, 'reset_parameters'):
+                #print(f"resetting layer: {layer}")
+                layer.reset_parameters()
+
+        if len(self.hparams.eval_steps) <= 1:
+            print("Stopping because no more steps in eval steps list")
+            self.trainer.should_stop = True

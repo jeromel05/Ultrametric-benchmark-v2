@@ -140,10 +140,9 @@ class UltraMetricSampler(torch.utils.data.Sampler):
         self.total_length = 0
         self.temp_length = 0
         self.b_len = b_len
-        self.__iter__(dummy=True)
 
-    def __iter__(self, dummy=False):
-        um_indexes = []
+    def __iter__(self):
+        um_indexes = []            
         idx = self.temp_length
         nb_previous_occurences = np.zeros(self.nb_classes, dtype=np.int32)
         um_class = 0
@@ -156,15 +155,13 @@ class UltraMetricSampler(torch.utils.data.Sampler):
             idx=idx+1
 
         self.curr_length = len(um_indexes)
-            
-        if not dummy:
-            self.total_length = self.total_length + len(um_indexes)
-            self.temp_length = self.temp_length + len(um_indexes) # keep 2 separate incase we want to reset only every x epochs
+        self.total_length = self.total_length + len(um_indexes)
+        self.temp_length = self.temp_length + len(um_indexes) # temp len is reset after each evaluation, total len is not
 
         return iter(um_indexes)
 
     def __len__(self):
-        return self.curr_length
+        return len(self.data_source)
     
     def reset_sampler(self):
         if self.b_len > 0:
@@ -268,7 +265,8 @@ class MnistDataModule(pl.LightningDataModule):
             self.um_train_ds=UltrametricMnistDataset(filtered_train_df, transform=None)
 
             if self.mode == 'um':
-                self.train_sampler = UltraMetricSampler(self.um_train_ds, self.markov_chain, train_class_index, self.nb_classes)
+                self.train_sampler = UltraMetricSampler(self.um_train_ds, self.markov_chain, train_class_index, 
+                                                        self.nb_classes) # B_len is missing!!!
                 self.test_ds = MnistLinearDataset(filtered_test_df, transform=None)
                 
             elif self.mode == 'split':

@@ -56,29 +56,26 @@ def run():
     parser.add_argument('--auto_lr_find', action='store_true', help="define level of verbosity")
     parser.add_argument('--patience', type=int, default=0, help="define level of verbosity")
     parser.add_argument('--lr_scheduler', type=str, default=None, choices=['reduce_lr'], help="define datset to use")
-    parser.add_argument('--eval_freq', type=int, default=2, help="define level of verbosity")
+    parser.add_argument('--eval_freq', type=int, default=1, help="define level of verbosity")
     parser.add_argument('--job_id', type=str, default="", help="define level of verbosity")
-
 
     args = parser.parse_args()
     print("All args: ", args)
     nb_classes = 2**args.max_tree_depth
-    nb_batches_per_epoch = max(int(nb_classes * args.noise_level / (args.batch_size_train) - 4), 1)
-    eval_steps = np.arange(0, int(args.max_epochs / args.eval_freq), 1) * args.eval_freq
-    print(f"Evaluation at steps: {eval_steps[0:6]}...")
     checkpoint_path = def_checkpoint_path(args)
 
     # training
     for seed in range(args.nb_folds):
         torch.manual_seed(seed)
         np.random.seed(seed)
-
+        eval_steps = def_eval_steps(args)
+        print(f"Evaluation at steps: {eval_steps[0:7]}...")
         data_module = create_data_modules(args, args.dataset)
         model = FFNetwork(input_size=args.input_size, hidden_size=args.hidden_size, nb_classes=nb_classes, 
                         mode=args.mode, optimizer=args.optimizer, lr=args.lr, lr_scheduler=args.lr_scheduler,
                         eval_steps=eval_steps)
         
-        print(f'Running mode: {args.mode} seed: {seed}')
+        print(f'{bcolors.OKCYAN}Running mode: {args.mode} seed: {seed} {bcolors.ENDC}')
         callbacks, checkpoint_callback = def_callbacks(args, checkpoint_path, seed)
 
         logger = TensorBoardLogger(checkpoint_path, name=f"metrics_{args.dataset}", version=f"fold_{seed}")
@@ -88,26 +85,27 @@ def run():
         trainer = pl.Trainer(default_root_dir=checkpoint_path, gpus=args.gpu, 
                             num_nodes=1, precision=32, logger=logger, max_epochs=args.max_epochs,
                             callbacks=callbacks,
-                            log_every_n_steps=nb_batches_per_epoch, 
-                            check_val_every_n_epoch=args.eval_freq)
+                            log_every_n_steps=1, 
+                            check_val_every_n_epoch=args.eval_freq, 
+                            val_check_interval=1,
+                            num_sanity_val_steps=0) #checks val after each train batch -> expensive
                             #, fast_dev_run=4)
         
         if args.auto_lr_find:
-            model.hparams.lr = find_lr(trainer=trainer, model=model, checkpoint_path_fold=checkpoint_path, data_module=data_module)
-            #other more concise alternative
-            #trainer.tune(model, datamodule=data_module)
+            model.hparams.lr = find_lr(trainer=trainer, model=model, 
+                                    checkpoint_path_fold=checkpoint_path, data_module=data_module)
 
         trainer.fit(model, data_module)
         if not checkpoint_callback == None:
             best_model_path = checkpoint_callback.best_model_path
-            print(f"{bcolors.OKCYAN} best_model_path: {best_model_path} {bcolors.ENDC}")
+            print(f"{bcolors.OKCYAN}best_model_path: {best_model_path} {bcolors.ENDC}")
             try:
                 model = FFNetwork.load_from_checkpoint(checkpoint_callback.best_model_path)
             except IsADirectoryError:
                 print('No best model saved: using last checkpoint as best one.')
 
         model.eval()
-        trainer.test(model, dataloaders=data_module.val_dataloader())
+        trainer.test(model, datamodule=data_module)
 
 def create_data_modules(args, dataset_name: str):
         if dataset_name == 'mnist':
@@ -139,18 +137,18 @@ def def_callbacks(args, checkpoint_path, seed):
 
     optim_mode = 'max' if 'acc' in args.metric else 'min'
     print(f'Optimizing on {args.metric} mode {optim_mode}')
-    if not args.mode == 'um':
-            checkpoint_callback = ModelCheckpoint(monitor=args.metric, dirpath=checkpoint_path_fold,
-                                                filename="{epoch:02d}_{val_loss:.2f}",
-                                                save_top_k=1, mode=optim_mode)
-            callbacks.append(checkpoint_callback)
+    #if not args.mode == 'um':
+    checkpoint_callback = ModelCheckpoint(monitor=args.metric, dirpath=checkpoint_path_fold,
+                                        filename="{epoch:02d}_{val_loss:.2f}",
+                                        save_top_k=1, mode=optim_mode)
+    callbacks.append(checkpoint_callback)
 
     if args.patience > 1:
         callbacks.append(EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=True, mode="max", patience=args.patience))
 
     progressbar_callback = TQDMProgressBar(refresh_rate=0, process_position=0)
     callbacks.append(progressbar_callback)
-    if args.lr_scheduler == "reduce_lr":
+    if args.lr_scheduler and args.lr_scheduler == "reduce_lr":
         lr_callback = LearningRateMonitor(logging_interval='epoch', log_momentum=False)
         callbacks.append(lr_callback)
     
@@ -163,6 +161,13 @@ def def_checkpoint_path(args):
     checkpoint_path = os.path.join(args.logfolder, ckpt_name)
     print(f"Saving checkpoints at: {checkpoint_path}")
     return checkpoint_path
+
+def def_eval_steps(args):
+            eval_steps = np.arange(0, int(args.max_epochs / args.eval_freq), 1) * args.eval_freq
+            for i in range(1, len(eval_steps)):
+                eval_steps[i] = eval_steps[i-1] + eval_steps[i]
+            eval_steps=eval_steps-1
+            return eval_steps[1:]
 
 if __name__ == '__main__':
     run()

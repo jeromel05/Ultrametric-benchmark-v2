@@ -71,13 +71,13 @@ def run():
         eval_steps = def_eval_steps(args)
         print(f"Evaluation at steps: {eval_steps[0:7]}...")
         data_module = create_data_modules(args, args.dataset)
+        print(f'{bcolors.OKCYAN}Running mode: {args.mode} seed: {seed} {bcolors.ENDC}')
+        callbacks, checkpoint_callback = def_callbacks(args, checkpoint_path, seed)
+
         model = FFNetwork(input_size=args.input_size, hidden_size=args.hidden_size, nb_classes=nb_classes, 
                         mode=args.mode, optimizer=args.optimizer, lr=args.lr, lr_scheduler=args.lr_scheduler,
                         eval_steps=eval_steps)
         
-        print(f'{bcolors.OKCYAN}Running mode: {args.mode} seed: {seed} {bcolors.ENDC}')
-        callbacks, checkpoint_callback = def_callbacks(args, checkpoint_path, seed)
-
         logger = TensorBoardLogger(checkpoint_path, name=f"metrics_{args.dataset}", version=f"fold_{seed}")
         if args.mode == 'um':
             data_module.set_markov_chain(args, seed)
@@ -151,7 +151,7 @@ def def_callbacks(args, checkpoint_path, seed):
 
     progressbar_callback = TQDMProgressBar(refresh_rate=0, process_position=0)
     callbacks.append(progressbar_callback)
-    if args.lr_scheduler and args.lr_scheduler == "reduce_lr":
+    if args.lr_scheduler: # Activate lr monitor
         lr_callback = LearningRateMonitor(logging_interval='epoch', log_momentum=False)
         callbacks.append(lr_callback)
     
@@ -166,11 +166,11 @@ def def_checkpoint_path(args):
     return checkpoint_path
 
 def def_eval_steps(args):
-            eval_steps = np.arange(0, int(args.max_epochs / args.eval_freq), 1) * args.eval_freq
-            for i in range(1, len(eval_steps)):
-                eval_steps[i] = eval_steps[i-1] + eval_steps[i]
-            eval_steps=eval_steps-1
-            return eval_steps[1:]
+    eval_steps = np.arange(0, int(args.max_epochs / args.eval_freq), 1) * args.eval_freq
+    for i in range(1, len(eval_steps)):
+        eval_steps[i] = eval_steps[i-1] + eval_steps[i]
+    eval_steps=eval_steps-1
+    return eval_steps[1:]
 
 if __name__ == '__main__':
     run()

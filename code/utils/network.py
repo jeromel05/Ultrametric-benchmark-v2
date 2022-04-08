@@ -37,15 +37,15 @@ class FFNetwork(pl.LightningModule):
         elif self.hparams.optimizer == 'sgd':
             optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.lr, momentum=0.2)
         
-        scheduler = []
-        if self.hparams.lr_scheduler == "ReduceLROnPlateau":
+        if self.hparams.lr_scheduler == "reduce_lr":
             #factor = self.hparams.lr_factor
             #patience = self.hparams.lr_patience
-            scheduler.append(torch.optim.lr_scheduler.ReduceLROnPlateau(
-                optimizer, mode="min", factor=0.2, patience=10
-            ))
-        
-        return [optimizer], scheduler
+            scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+                optimizer, mode="min", factor=0.3, patience=50, min_lr=1e-4)
+            config_dict = {"optimizer": optimizer, "lr_scheduler": scheduler, "monitor": "train_loss_step"}
+            return config_dict
+        else:
+            return optimizer
     
     def evaluate_metrics(self, preds, target, num_classes, compute_cf_mat=False,
                          cm_figure=False, roc_figure=False):

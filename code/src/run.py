@@ -81,13 +81,16 @@ def run():
         logger = TensorBoardLogger(checkpoint_path, name=f"metrics_{args.dataset}", version=f"fold_{seed}")
         if args.mode == 'um':
             data_module.set_markov_chain(args, seed)
+            val_check_interval=1
+        else:
+            val_check_interval=1.0
 
         trainer = pl.Trainer(default_root_dir=checkpoint_path, gpus=args.gpu, 
                             num_nodes=1, precision=32, logger=logger, max_epochs=args.max_epochs,
                             callbacks=callbacks,
                             log_every_n_steps=1, 
                             check_val_every_n_epoch=args.eval_freq, 
-                            val_check_interval=1,
+                            val_check_interval=val_check_interval,
                             num_sanity_val_steps=0) #checks val after each train batch -> expensive
                             #, fast_dev_run=4)
         
@@ -105,7 +108,7 @@ def run():
                 print('No best model saved: using last checkpoint as best one.')
 
         model.eval()
-        trainer.test(model, datamodule=data_module)
+        trainer.test(model, dataloaders=data_module.val_dataloader()) #datamodule=data_module)
 
 def create_data_modules(args, dataset_name: str):
         if dataset_name == 'mnist':

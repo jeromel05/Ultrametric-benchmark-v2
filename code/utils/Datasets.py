@@ -135,6 +135,7 @@ class UltraMetricSampler(torch.utils.data.Sampler):
     def __init__(self, data_source, chain, class_index, nb_classes, b_len=0):
         self.data_source = data_source
         self.chain = chain
+        self.temp_shuff_chain = chain.copy()
         self.class_index = class_index
         self.nb_classes = nb_classes
         self.total_length = 0
@@ -150,7 +151,7 @@ class UltraMetricSampler(torch.utils.data.Sampler):
         while nb_previous_occurences[um_class] < self.class_index[um_class].size:
             um_idx = self.class_index[um_class][nb_previous_occurences[um_class]]
             um_indexes.append(um_idx)
-            um_class = self.chain[idx]
+            um_class = self.temp_shuff_chain[idx]
             nb_previous_occurences[um_class] = nb_previous_occurences[um_class] + 1
             idx=idx+1
 
@@ -164,8 +165,9 @@ class UltraMetricSampler(torch.utils.data.Sampler):
         return len(self.data_source)
     
     def reset_sampler(self):
+        self.temp_shuff_chain = self.chain.copy()
         if self.b_len > 0:
-            self.chain[:self.total_length] = shuffle_blocks_v2(self.chain[:self.total_length], self.b_len)
+            self.temp_shuff_chain[:self.total_length] = shuffle_blocks_v2(self.chain[:self.total_length], self.b_len)
         self.temp_length = 0
     
 

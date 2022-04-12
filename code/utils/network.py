@@ -41,7 +41,7 @@ class FFNetwork(pl.LightningModule):
             #factor = self.hparams.lr_factor
             #patience = self.hparams.lr_patience
             scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
-                optimizer, mode="min", factor=0.3, patience=50, min_lr=1e-4)
+                optimizer, mode="min", factor=0.5, patience=100, min_lr=1e-3)
             config_dict = {"optimizer": optimizer, "lr_scheduler": scheduler, "monitor": "train_loss_step"}
             return config_dict
         else:
@@ -102,7 +102,9 @@ class FFNetwork(pl.LightningModule):
 
     def validation_step(self, val_batch, batch_idx):
         #print('val: ', self.trainer.current_epoch, self.hparams.eval_steps[0:4])
-        um_cond = (self.hparams.mode == 'um' and (self.trainer.current_epoch in self.hparams.eval_steps))
+        um_cond=False
+        if not self.hparams.eval_steps == None:
+            um_cond = (self.hparams.mode == 'um' and (self.trainer.current_epoch in self.hparams.eval_steps))
         if ((not self.hparams.mode == 'um') or (um_cond and self.run_val)):
             x, y = val_batch
             num_classes = y.size(1)
@@ -123,7 +125,7 @@ class FFNetwork(pl.LightningModule):
             if not val_cf_mat == None:
                 self.log_figures(num_classes, val_cf_mat, val_roc_curve)
 
-            if self.hparams.mode == 'um':
+            if (not self.hparams.eval_steps == None) and (self.hparams.mode == 'um'):
                 #print(f'UM RESET at epoch: {self.trainer.current_epoch}')
                 self.reset_network_sampler()
                 self.run_val=False
@@ -169,6 +171,6 @@ class FFNetwork(pl.LightningModule):
                 #print(f"resetting layer: {layer}")
                 layer.reset_parameters()
 
-        if len(self.hparams.eval_steps) <= 1:
+        if np.all(self.hparams.eval_steps < self.trainer.current_epoch):
             print("Stopping because no more steps in eval steps list")
             self.trainer.should_stop = True

@@ -58,6 +58,8 @@ def run():
     parser.add_argument('--lr_scheduler', type=str, default=None, choices=['reduce_lr'], help="define datset to use")
     parser.add_argument('--eval_freq', type=int, default=1, help="define level of verbosity")
     parser.add_argument('--job_id', type=str, default="", help="define level of verbosity")
+    parser.add_argument('--do_shuffles', action='store_true', help="define level of verbosity")
+
 
     args = parser.parse_args()
     print("All args: ", args)
@@ -68,8 +70,11 @@ def run():
     for seed in range(args.nb_folds):
         torch.manual_seed(seed)
         np.random.seed(seed)
-        eval_steps = def_eval_steps(args)
-        print(f"Evaluation at steps: {eval_steps[0:7]}...")
+
+        eval_steps=None
+        if args.do_shuffles:
+            eval_steps = def_eval_steps(args)
+            print(f"Evaluation at steps: {eval_steps[0:7]}...")
         data_module = create_data_modules(args, args.dataset)
         print(f'{bcolors.OKCYAN}Running mode: {args.mode} seed: {seed} {bcolors.ENDC}')
         callbacks, checkpoint_callback = def_callbacks(args, checkpoint_path, seed)
@@ -140,7 +145,6 @@ def def_callbacks(args, checkpoint_path, seed):
 
     optim_mode = 'max' if 'acc' in args.metric else 'min'
     print(f'Optimizing on {args.metric} mode {optim_mode}')
-    #if not args.mode == 'um':
     checkpoint_callback = ModelCheckpoint(monitor=args.metric, dirpath=checkpoint_path_fold,
                                         filename="{epoch:02d}_{val_loss:.2f}",
                                         save_top_k=1, mode=optim_mode)

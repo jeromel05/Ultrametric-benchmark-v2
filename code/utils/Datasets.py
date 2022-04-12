@@ -281,9 +281,9 @@ class MnistDataModule(pl.LightningDataModule):
 
                                 
 class SynthDataModule(UMDataModule):
-    def __init__(self, max_depth: int, data_dir: str = "./", batch_size_train: int=128, batch_size_test: int=1000, 
-                 num_workers: int=4, mode: str='rand', chain=None, leaf_length=1000, noise_level=1, p_flip=0.1,
-                 p_noise=0.05, normalize_data=False, repeat_data=1, test_split=0.1, b_len=0):
+    def __init__(self, max_depth: int, data_dir: str = "./", batch_size_train: int=8, batch_size_test: int=1000, 
+                 num_workers: int=4, mode: str='rand', chain=None, leaf_length=200, noise_level=1, p_flip=0.1,
+                 p_noise=0.02, normalize_data=False, repeat_data=1, test_split=0.1, b_len=0):
         super().__init__(max_depth=max_depth, data_dir=data_dir, batch_size_train=batch_size_train, 
                         batch_size_test=batch_size_test, num_workers=num_workers, mode=mode, chain=chain)
         self.leaf_length = leaf_length

@@ -23,14 +23,14 @@ def compute_P_0(maxh, tree_l, chain, verbose=0):
     P0=np.zeros(maxh)
     P0stat=np.zeros(maxh)
     for i in tqdm(range(0, tree_l), leave=False):
-        P0stat = compute_P0_inner_loop(i, P0)
+        P0stat = compute_P0_inner_loop(i, P0, chain, tree_l, maxh)
     
     P0stat[0]=1
     P0stat[1]=1
     if verbose>0: print("P_0 computed")
     return P0, P0stat
 
-def compute_P0_inner_loop(i, P0, P0stat, chain, tree_l, maxh):
+def compute_P0_inner_loop(i, P0, chain, tree_l, maxh):
     locs=np.where(chain==i)[0] #find all occurrences of i
     if locs.shape[0] == 0: 
         return P0stat

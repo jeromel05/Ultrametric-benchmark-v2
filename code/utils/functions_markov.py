@@ -21,7 +21,7 @@ def fillmarkov(m,i1,j1,l,md):
 def compute_P_0(maxh, tree_l, chain, verbose=0):
     if verbose>0: print("Computing P_0...")
     P0=np.zeros(maxh)
-    P0stat=np.zeros(maxh)
+
     for i in tqdm(range(0, tree_l), leave=False):
         P0stat = compute_P0_inner_loop(i, P0, chain, tree_l, maxh)
     
@@ -31,6 +31,7 @@ def compute_P_0(maxh, tree_l, chain, verbose=0):
     return P0, P0stat
 
 def compute_P0_inner_loop(i, P0, chain, tree_l, maxh):
+    P0stat=np.zeros(maxh)
     locs=np.where(chain==i)[0] #find all occurrences of i
     if locs.shape[0] == 0: 
         return P0stat
@@ -75,10 +76,7 @@ def generate_chain(markovme, chain_length, verbose=0):
     chain=np.zeros((chain_length), dtype=np.int32)
     chain[0]=1
     if verbose>0: print("Generating Markov chain...")
-    for i in trange(1, chain_length):
-        if(((i%(chain_length/10))==0) and (verbose>1)):
-            print(int(i/(chain_length/10)), " ", i)
-    
+    for i in range(1, chain_length):
         this_step_distribution = markovme[int(chain[i-1])]
         cumulative_distribution = np.cumsum(this_step_distribution)
         r = np.random.rand(1)[0]

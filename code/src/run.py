@@ -39,7 +39,7 @@ def run():
     parser.add_argument('--p_flip', type=float, default=0.1, help="define level of verbosity")
     parser.add_argument('--p_noise', type=float, default=0.05, help="define level of verbosity")
 
-    parser.add_argument('--hidden_size', type=int, default=1000, help="define level of verbosity")
+    parser.add_argument('--hidden_size', type=int, default=200, help="define level of verbosity")
     parser.add_argument('--lr', type=float, default=0.01, help="define level of verbosity")
     parser.add_argument('--max_epochs', type=int, default=100, help="define level of verbosity")
     parser.add_argument('--generate_chain', action='store_true', help="define level of verbosity")
@@ -47,32 +47,34 @@ def run():
     parser.add_argument('-T', '--temperature', type=float, default=0.4, help="define level of verbosity")
     parser.add_argument('--mode', type=str, default='rand', choices=['rand', 'um', 'split'], help="Folder to save the data")
     parser.add_argument('--num_workers', type=int, default=4, help="define level of verbosity")
-    parser.add_argument('--b_len', type=int, default=0, help="define level of verbosity")
+    parser.add_argument('--b_len', type=int, default=0, help="if b_len > 0 -> do shuffles")
     parser.add_argument('--normalize_data', action='store_true', help="define level of verbosity")
     parser.add_argument('--repeat_data', type=int, default=1, help="define level of verbosity")
     parser.add_argument('--test_split', type=float, default=0.2, help="define level of verbosity")
     parser.add_argument('--optimizer', type=str, default="sgd", choices=['sgd', 'adam'], help="define datset to use")
     parser.add_argument('--metric', type=str, default="val_loss", choices=['val_acc', 'val_loss', 'train_acc'], help="define datset to use")
     parser.add_argument('--auto_lr_find', action='store_true', help="define level of verbosity")
-    parser.add_argument('--patience', type=int, default=0, help="define level of verbosity")
     parser.add_argument('--lr_scheduler', type=str, default=None, choices=['reduce_lr'], help="define datset to use")
     parser.add_argument('--eval_freq', type=int, default=1, help="define level of verbosity")
     parser.add_argument('--job_id', type=str, default="", help="define level of verbosity")
-    parser.add_argument('--do_shuffles', action='store_true', help="define level of verbosity")
+    parser.add_argument('--early_stop', action='store_true', help="define level of verbosity")
+    parser.add_argument('--start_seed', type=int, default=0, help="define level of verbosity")
 
 
     args = parser.parse_args()
     print("All args: ", args)
     nb_classes = 2**args.max_tree_depth
     checkpoint_path = def_checkpoint_path(args)
+    max_batches_per_epoch = int((1-args.test_split) * nb_classes * args.noise_level)
 
     # training
-    for seed in range(args.nb_folds):
+    for seed in np.arange(args.start_seed, args.start_seed + args.nb_folds, step=1):
+        start_time = time.time()
         torch.manual_seed(seed)
         np.random.seed(seed)
 
         eval_steps=None
-        if args.do_shuffles:
+        if args.b_len > 0:
             eval_steps = def_eval_steps(args)
             print(f"Evaluation at steps: {eval_steps[0:7]}...")
         data_module = create_data_modules(args, args.dataset)
@@ -81,14 +83,16 @@ def run():
 
         model = FFNetwork(input_size=args.input_size, hidden_size=args.hidden_size, nb_classes=nb_classes, 
                         mode=args.mode, optimizer=args.optimizer, lr=args.lr, lr_scheduler=args.lr_scheduler,
-                        eval_steps=eval_steps)
+                        eval_steps=eval_steps, max_batches_per_epoch=max_batches_per_epoch)
         
         logger = TensorBoardLogger(checkpoint_path, name=f"metrics_{args.dataset}", version=f"fold_{seed}")
         if args.mode == 'um':
             data_module.set_markov_chain(args, seed)
             val_check_interval=1
+            num_sanity_val_steps=0
         else:
             val_check_interval=1.0
+            num_sanity_val_steps=-1
 
         trainer = pl.Trainer(default_root_dir=checkpoint_path, gpus=args.gpu, 
                             num_nodes=1, precision=32, logger=logger, max_epochs=args.max_epochs,
@@ -96,12 +100,15 @@ def run():
                             log_every_n_steps=1, 
                             check_val_every_n_epoch=args.eval_freq, 
                             val_check_interval=val_check_interval,
-                            num_sanity_val_steps=0) #checks val after each train batch -> expensive
+                            num_sanity_val_steps=num_sanity_val_steps) #checks val after each train batch -> expensive
                             #, fast_dev_run=4)
         
         if args.auto_lr_find:
-            model.hparams.lr = find_lr(trainer=trainer, model=model, 
-                                    checkpoint_path_fold=checkpoint_path, data_module=data_module)
+            print("Fitting lr...")
+            suggested_lr = find_lr(trainer=trainer, model=model, 
+                                checkpoint_path_fold=checkpoint_path, data_module=data_module)
+            if suggested_lr < 1.0 and suggested_lr > 1e3:
+                model.hparams.lr = suggested_lr
 
         trainer.fit(model, data_module)
         if not checkpoint_callback == None:
@@ -114,6 +121,9 @@ def run():
 
         model.eval()
         trainer.test(model, dataloaders=data_module.val_dataloader()) #datamodule=data_module)
+
+        end_time = time.time()
+        print(f"{bcolors.OKGREEN}Fold {seed} computed in {(end_time-start_time)/60:.3}min {bcolors.ENDC}")
 
 def create_data_modules(args, dataset_name: str):
         if dataset_name == 'mnist':
@@ -150,8 +160,10 @@ def def_callbacks(args, checkpoint_path, seed):
                                         save_top_k=1, mode=optim_mode)
     callbacks.append(checkpoint_callback)
 
-    if args.patience > 1:
-        callbacks.append(EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=True, mode="max", patience=args.patience))
+    if args.early_stop:
+        callbacks.append(
+            EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=True, 
+                        mode="max", stopping_threshold=0.95, patience=250))
 
     progressbar_callback = TQDMProgressBar(refresh_rate=0, process_position=0)
     callbacks.append(progressbar_callback)

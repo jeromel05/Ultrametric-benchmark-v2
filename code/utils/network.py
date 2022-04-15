@@ -10,7 +10,8 @@ from torchmetrics.utilities.data import to_categorical
 from util_functions import make_confusion_matrix_figure, make_roc_curves_figure, print_metrics
 
 class FFNetwork(pl.LightningModule):
-    def __init__(self, input_size, hidden_size, nb_classes, mode, optimizer, lr, lr_scheduler, eval_steps):
+    def __init__(self, input_size, hidden_size, nb_classes, mode, optimizer, lr, lr_scheduler, 
+                eval_steps, max_batches_per_epoch):
         super().__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -20,6 +21,7 @@ class FFNetwork(pl.LightningModule):
         self.softmax = nn.Softmax(dim = 1)
 
         self.run_val=False
+        self.max_batches_per_epoch=max_batches_per_epoch
 
         self.save_hyperparameters()
 
@@ -72,40 +74,28 @@ class FFNetwork(pl.LightningModule):
   
     def training_step(self, train_batch, batch_idx):
         x, y = train_batch
-        #print('train: ', self.trainer.current_epoch, x.size())
-        self.run_val = True if(x.size(0) < self.trainer.datamodule.batch_size_train) else False
-        # or nb_batch == max_batches_per_epoch
+        #print('train: ', self.trainer.current_epoch, x.size(), "batch_idx", batch_idx)
+        self.run_val = True if(x.size(0)<self.trainer.datamodule.batch_size_train or batch_idx==self.max_batches_per_epoch) else False
         num_classes = y.size(1)
         x = x.view(x.size(0), -1)
         o = self.forward(x)
         loss = F.binary_cross_entropy(o, y)
         self.log('train_loss', loss, on_step=True, on_epoch=True, prog_bar=False, logger=True)
-        
+
         target = to_categorical(y, argmax_dim=1)
-        
-        #roc_figure = True if (self.global_step % 300 == 0) and (num_classes <= 16) else False
-        roc_figure=False
-        train_acc, train_ap, train_auroc, train_cf_mat, train_roc = self.evaluate_metrics(o, target, num_classes, 
-                                                                compute_cf_mat=False,cm_figure=False, roc_figure=roc_figure)
-        
+        train_acc = accuracy(o, target, average='micro', num_classes=num_classes)
         self.log('train_acc', train_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-        self.log('train_ap', train_ap, on_step=False, on_epoch=True, prog_bar=False, logger=True)
-        self.log('train_auroc', train_auroc, on_step=False, on_epoch=True, prog_bar=False, logger=True)
-        
-        #tensorboard = self.logger.experiment
-        #tensorboard.add_image("train_cf_mat", train_cf_mat, dataformats='HW', global_step=self.global_step)
-        
-        #if num_classes <= 16 and roc_figure:
-        #    tensorboard.add_figure("train_roc_curve", train_roc, global_step=self.global_step)
         
         return loss
 
     def validation_step(self, val_batch, batch_idx):
         #print('val: ', self.trainer.current_epoch, self.hparams.eval_steps[0:4])
-        um_cond=False
-        if not self.hparams.eval_steps == None:
-            um_cond = (self.hparams.mode == 'um' and (self.trainer.current_epoch in self.hparams.eval_steps))
-        if ((not self.hparams.mode == 'um') or (um_cond and self.run_val)):
+        cond_no_um = not self.hparams.mode == 'um'
+        cond_um = (self.hparams.mode == 'um')
+        cond_no_shuffle = cond_um and (np.all(self.hparams.eval_steps == None))
+        cond_um_shuffle = cond_um and (not np.all(self.hparams.eval_steps == None)) and (self.trainer.current_epoch in self.hparams.eval_steps)
+        
+        if cond_no_um or (self.run_val and (cond_no_shuffle or cond_um_shuffle)):
             x, y = val_batch
             num_classes = y.size(1)
             x = x.view(x.size(0), -1)
@@ -118,18 +108,21 @@ class FFNetwork(pl.LightningModule):
                                                                 target, num_classes, compute_cf_mat=False,
                                                                 cm_figure=False, roc_figure=False)
             self.log('val_acc', val_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-            self.log('val_ap', val_ap, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-            self.log('val_auroc', val_auroc_, on_step=False, on_epoch=True, prog_bar=False, logger=True)
+            #self.log('val_ap', val_ap, on_step=False, on_epoch=True, prog_bar=True, logger=True)
+            #self.log('val_auroc', val_auroc_, on_step=False, on_epoch=True, prog_bar=False, logger=True)
+            if not np.all(self.hparams.eval_steps == None):
+                val_epoch = np.where(self.hparams.eval_steps == self.trainer.current_epoch)[0][0]
+                self.log('val_epoch', val_epoch, on_step=False, on_epoch=True, prog_bar=False, logger=True)
 
-            print(f"Val at epoch: {self.trainer.current_epoch}, loss: {loss:.3}, acc: {val_acc:.3}")
+            print(f"Val epoch: {self.trainer.current_epoch}, loss: {loss:.3}, acc: {val_acc:.3}")
             if not val_cf_mat == None:
                 self.log_figures(num_classes, val_cf_mat, val_roc_curve)
 
-            if (not self.hparams.eval_steps == None) and (self.hparams.mode == 'um'):
+            if (not np.all(self.hparams.eval_steps == None)) and (self.hparams.mode == 'um'):
                 #print(f'UM RESET at epoch: {self.trainer.current_epoch}')
                 self.reset_network_sampler()
-                self.run_val=False
-
+            
+            self.run_val=False
 
     def test_step(self, test_batch, batch_idx):
         x, y = test_batch
@@ -147,10 +140,8 @@ class FFNetwork(pl.LightningModule):
         self.log('test_acc', test_acc, on_step=False, on_epoch=True, prog_bar=False, logger=True)
         self.log('test_ap', test_ap, on_step=False, on_epoch=True, prog_bar=False, logger=True)
         self.log('test_auroc', test_auroc_, on_step=False, on_epoch=True, prog_bar=False, logger=True)
-
         #print_metrics(test_acc, test_ap, test_auroc_, test_cf_mat, test_roc_curve, save_figs = (num_classes <= 16))
         
-
     def validation_epoch_end(self, outputs):
         if self.hparams.mode == 'split':
             self.trainer.datamodule.train_dataloader().sampler.update_curr_epoch_nb()

@@ -165,9 +165,9 @@ class UltraMetricSampler(torch.utils.data.Sampler):
         return len(self.data_source)
     
     def reset_sampler(self):
+        assert(self.b_len > 0)
         self.temp_shuff_chain = self.chain.copy()
-        if self.b_len > 0:
-            self.temp_shuff_chain[:self.total_length] = shuffle_blocks_v2(self.chain[:self.total_length], self.b_len)
+        self.temp_shuff_chain[:self.total_length] = shuffle_blocks_v2(self.chain[:self.total_length], self.b_len)
         self.temp_length = 0
     
 
@@ -202,7 +202,7 @@ class BinarySampler(torch.utils.data.Sampler):
 
 class UMDataModule(pl.LightningDataModule):
     def __init__(self, max_depth: int, data_dir: str = "./", batch_size_train: int=128, batch_size_test: int=1000, 
-                 num_workers: int=4, mode: str='rand', chain=None):
+                 num_workers: int=4, mode: str='rand', chain=None, b_len=0):
         super().__init__()
         self.data_dir = data_dir
         self.batch_size_train = batch_size_train
@@ -214,6 +214,7 @@ class UMDataModule(pl.LightningDataModule):
         self.nb_classes = 2**max_depth
         self.classes = np.arange(0, self.nb_classes)
         self.markov_chain = chain
+        self.b_len=b_len
 
     def train_dataloader(self):
         return DataLoader(self.um_train_ds, batch_size=self.batch_size_train, shuffle=False, 
@@ -240,9 +241,10 @@ class UMDataModule(pl.LightningDataModule):
                              
 class MnistDataModule(pl.LightningDataModule):
     def __init__(self, data_dir: str = "./", batch_size_train: int=128, batch_size_test: int=1000, 
-                 num_workers: int=4, mode: str='rand', chain=None, normalization_transform: torchvision.transforms=None):
+                 num_workers: int=4, mode: str='rand', chain=None, 
+                 normalization_transform: torchvision.transforms=None, b_len=0):
         super().__init__(max_depth=3, data_dir=data_dir, batch_size_train=batch_size_train, batch_size_test=batch_size_test, 
-                        num_workers=num_workers, mode=mode, chain=chain)
+                        num_workers=num_workers, mode=mode, chain=chain, b_len=b_len)
         self.transform = transforms.Compose([transforms.ToTensor(), normalization_transform])
                              
     def setup(self, stage = None):
@@ -268,7 +270,7 @@ class MnistDataModule(pl.LightningDataModule):
 
             if self.mode == 'um':
                 self.train_sampler = UltraMetricSampler(self.um_train_ds, self.markov_chain, train_class_index, 
-                                                        self.nb_classes) # B_len is missing!!!
+                                                        self.nb_classes, b_len=self.b_len) # B_len is missing!!!
                 self.test_ds = MnistLinearDataset(filtered_test_df, transform=None)
                 
             elif self.mode == 'split':
@@ -285,7 +287,8 @@ class SynthDataModule(UMDataModule):
                  num_workers: int=4, mode: str='rand', chain=None, leaf_length=200, noise_level=1, p_flip=0.1,
                  p_noise=0.02, normalize_data=False, repeat_data=1, test_split=0.1, b_len=0):
         super().__init__(max_depth=max_depth, data_dir=data_dir, batch_size_train=batch_size_train, 
-                        batch_size_test=batch_size_test, num_workers=num_workers, mode=mode, chain=chain)
+                        batch_size_test=batch_size_test, num_workers=num_workers, mode=mode, chain=chain,
+                        b_len=b_len)
         self.leaf_length = leaf_length
         self.tree = SynthUltrametricTree(max_depth=max_depth, p_flip=p_flip, p_noise=p_noise, 
                                          leaf_length=leaf_length, shuffle_labels=True,
@@ -293,7 +296,6 @@ class SynthDataModule(UMDataModule):
         self.normalize_data = normalize_data
         self.repeat_data = repeat_data
         self.test_split = test_split
-        self.b_len = b_len
                              
     def setup(self, stage = None):
         X, y = self.tree.leaves, self.tree.labels

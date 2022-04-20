@@ -173,3 +173,7 @@ notebooks/.DS_Store
 logs/
 
 
+*.ckpt
+*.yaml
+*.0
+*.1

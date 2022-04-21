@@ -112,7 +112,7 @@ class FFNetwork(pl.LightningModule):
                 val_epoch = self.hparams.eval_steps.index(self.trainer.current_epoch)
             else:
                 val_epoch = self.trainer.current_epoch
-            self.log('val_epoch', float(val_epoch), on_step=True, on_epoch=False, prog_bar=False, logger=True)
+            self.log('val_epoch', float(val_epoch)) #, on_step=True, on_epoch=False, prog_bar=False, logger=True)
 
             print(f"Val epoch: {self.trainer.current_epoch}, loss: {loss:.3}, acc: {val_acc:.3}")
             if not val_cf_mat == None:

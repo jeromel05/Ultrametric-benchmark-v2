@@ -85,7 +85,7 @@ def run():
                         mode=args.mode, optimizer=args.optimizer, lr=args.lr, lr_scheduler=args.lr_scheduler,
                         eval_steps=eval_steps, max_batches_per_epoch=max_batches_per_epoch, b_len=args.b_len)
         
-        logger = TensorBoardLogger(logs_path, name=f"metrics_{args.dataset}", version=f"fold_{seed}")
+        logger = TensorBoardLogger(logs_path, name=f"metrics", version=f"fold_{seed}")
         if args.mode == 'um':
             data_module.set_markov_chain(args, seed)
             val_check_interval=1
@@ -174,7 +174,7 @@ def def_callbacks(args, checkpoint_path, seed):
 def def_logs_path(args):
     now = datetime.now()
     dt_string = now.strftime("%d%m_%H%M")
-    ckpt_name = f"{args.job_id}_{dt_string}_{args.dataset}_{args.mode}_b{args.b_len}_d{args.max_tree_depth}/"
+    ckpt_name = f"{args.job_id}_{dt_string}_{args.dataset}_{args.mode}_b{args.b_len}_d{args.max_tree_depth}_h{args.hidden_size}_lr{args.lr}/"
     logs_path = os.path.join(args.logfolder, ckpt_name)
     print(f"Saving logs at: {logs_path}")
     return logs_path

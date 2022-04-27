@@ -60,6 +60,7 @@ def run():
     parser.add_argument('--early_stop', action='store_true', help="define level of verbosity")
     parser.add_argument('--start_seed', type=int, default=0, help="define level of verbosity")
     parser.add_argument('--show_progbar', action='store_true', help="define level of verbosity")
+    parser.add_argument('--single_eval', type=int, default=0, help="define level of verbosity")
 
     args = parser.parse_args()
     print("All args: ", args)
@@ -76,6 +77,10 @@ def run():
         eval_steps=None
         if args.b_len > 0:
             eval_steps = def_eval_steps(args)
+            if args.single_eval > 0:
+                eval_steps = [args.single_eval]
+                print(f'Only a single eval will be done at: {eval_steps}')
+
         
         data_module = create_data_modules(args, args.dataset)
         print(f'{bcolors.OKCYAN}Running mode: {args.mode} seed: {seed} {bcolors.ENDC}')
@@ -83,14 +88,15 @@ def run():
 
         model = FFNetwork(input_size=args.input_size, hidden_size=args.hidden_size, nb_classes=nb_classes, 
                         mode=args.mode, optimizer=args.optimizer, lr=args.lr, lr_scheduler=args.lr_scheduler,
-                        eval_steps=eval_steps, max_batches_per_epoch=max_batches_per_epoch, b_len=args.b_len)
+                        eval_steps=eval_steps, max_batches_per_epoch=max_batches_per_epoch, b_len=args.b_len,
+                        eval_freq=args.eval_freq)
         
         logger = TensorBoardLogger(logs_path, name=f"metrics", version=f"fold_{seed}")
         if args.mode == 'um':
             data_module.set_markov_chain(args, seed)
             val_check_interval=1
         else:
-            val_check_interval=1.0
+            val_check_interval=10
             
         trainer = pl.Trainer(default_root_dir=logs_path, gpus=args.gpu, 
                             num_nodes=1, precision=32, logger=logger, max_epochs=args.max_epochs,
@@ -104,7 +110,7 @@ def run():
             print("Fitting lr...")
             suggested_lr = find_lr(trainer=trainer, model=model, 
                                 checkpoint_path_fold=logs_path, data_module=data_module)
-            if suggested_lr < 2.0 and suggested_lr > 1e3:
+            if suggested_lr <= 5.0 and suggested_lr > 1e3:
                 model.hparams.lr = suggested_lr
 
         trainer.fit(model, data_module)
@@ -152,15 +158,16 @@ def def_callbacks(args, checkpoint_path, seed):
 
     optim_mode = 'max' if 'acc' in args.metric else 'min'
     print(f'Optimizing on {args.metric} mode {optim_mode}')
-    checkpoint_callback = ModelCheckpoint(monitor=args.metric, dirpath=checkpoint_path_fold,
+    if args.single_eval == 0:
+        checkpoint_callback = ModelCheckpoint(monitor=args.metric, dirpath=checkpoint_path_fold,
                                         filename="{epoch:02d}_{val_loss:.2f}",
                                         save_top_k=1, mode=optim_mode)
-    callbacks.append(checkpoint_callback)
+        callbacks.append(checkpoint_callback)
 
     if args.early_stop:
         callbacks.append(
             EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=True, 
-                        mode="max", stopping_threshold=0.95, patience=400, strict=True))
+                        mode="max", stopping_threshold=0.95, patience=1500, strict=True))
 
     if not args.show_progbar:
         progressbar_callback = TQDMProgressBar(refresh_rate=0, process_position=0)

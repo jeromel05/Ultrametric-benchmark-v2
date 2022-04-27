@@ -164,10 +164,13 @@ class UltraMetricSampler(torch.utils.data.Sampler):
     def __len__(self):
         return len(self.data_source)
     
-    def reset_sampler(self):
+    def reset_sampler(self, until_idx=None):
         assert(self.b_len > 0)
         self.temp_shuff_chain = self.chain.copy()
-        self.temp_shuff_chain[:self.total_length] = shuffle_blocks_v2(self.chain[:self.total_length], self.b_len)
+        if not until_idx == None:
+            self.temp_shuff_chain[:until_idx] = shuffle_blocks_v2(self.chain[:until_idx], self.b_len)
+        else:
+            self.temp_shuff_chain[:self.total_length] = shuffle_blocks_v2(self.chain[:self.total_length], self.b_len)
         self.temp_length = 0
 
 

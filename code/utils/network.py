@@ -11,7 +11,7 @@ from util_functions import make_confusion_matrix_figure, make_roc_curves_figure,
 
 class FFNetwork(pl.LightningModule):
     def __init__(self, input_size, hidden_size, nb_classes, mode, optimizer, lr, lr_scheduler, 
-                eval_steps, max_batches_per_epoch, b_len):
+                eval_steps, max_batches_per_epoch, b_len, eval_freq):
         super().__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -84,12 +84,15 @@ class FFNetwork(pl.LightningModule):
         train_acc = accuracy(o, target, average='micro', num_classes=num_classes)
         self.log('train_acc', train_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         
-        cond_um = self.hparams.mode == 'um'
-        cond_um_no_shuffle = cond_um and (np.all(self.hparams.eval_steps == None))
-        cond_um_shuffle = cond_um and (not np.all(self.hparams.eval_steps == None)) and (self.trainer.current_epoch in self.hparams.eval_steps)
-        cond_last_batch = batch_idx == np.ceil(len(self.trainer.datamodule.train_dataloader().sampler.um_indexes) / self.trainer.datamodule.batch_size_train) - 1
-        if cond_last_batch and (cond_um_no_shuffle or cond_um_shuffle):
+        if not self.hparams.mode == 'um':
             self.run_val=True
+        else:
+            cond_um_no_shuffle = (np.all(self.hparams.eval_steps == None))
+            cond_um_shuffle = (not np.all(self.hparams.eval_steps == None)) and (self.trainer.current_epoch in self.hparams.eval_steps)
+            cond_last_batch = batch_idx == np.ceil(len(self.trainer.datamodule.train_dataloader().sampler.um_indexes) / self.trainer.datamodule.batch_size_train) - 1
+            if cond_last_batch and (cond_um_no_shuffle or cond_um_shuffle):
+                #print("#samples per epoch", len(self.trainer.datamodule.train_dataloader().sampler.um_indexes), self.trainer.global_step)
+                self.run_val=True
         return loss
 
     def validation_step(self, val_batch, batch_idx):
@@ -109,18 +112,25 @@ class FFNetwork(pl.LightningModule):
             #self.log('val_ap', val_ap, on_step=False, on_epoch=True, prog_bar=True, logger=True)
             #self.log('val_auroc', val_auroc_, on_step=False, on_epoch=True, prog_bar=False, logger=True)
             if not np.all(self.hparams.eval_steps == None) and self.trainer.current_epoch in self.hparams.eval_steps:
-                val_epoch = self.hparams.eval_steps.index(self.trainer.current_epoch)
+                val_epoch = self.hparams.eval_steps.index(self.trainer.current_epoch) # return the idx as the idx is the true epoch
             else:
                 val_epoch = self.trainer.current_epoch
             self.log('val_epoch', float(val_epoch)) #, on_step=True, on_epoch=False, prog_bar=False, logger=True)
+            self.log('val_step', float(self.trainer.global_step))
 
             print(f"Val epoch: {self.trainer.current_epoch}, loss: {loss:.3}, acc: {val_acc:.3}")
             if not val_cf_mat == None:
                 self.log_figures(num_classes, val_cf_mat, val_roc_curve)
 
-            if (not np.all(self.hparams.eval_steps == None)) and (self.hparams.mode == 'um'):
+            if (self.hparams.mode == 'um') and (not np.all(self.hparams.eval_steps == None)):
                 #print(f'UM RESET at epoch: {self.trainer.current_epoch}')
+                if len(self.hparams.eval_steps) == 1:
+                    nb_iter_until_next_eval =  self.hparams.eval_steps[0] # PAS POSSBILE de calculer a l'avance LE NB DE SAMPLES PASSES DANS LE RESEAU AV
+                else:
+                    nb_iter_until_next_eval = self.hparams.eval_freq
+                for _ in range(nb_iter_until_next_eval - 1): self.trainer.datamodule.train_dataloader().sampler.__iter__() # if we have eval_freq > 1 we simulate iterating on the markov_chain
                 self.reset_network_sampler()
+
         self.run_val=False
         
     def test_step(self, test_batch, batch_idx):
@@ -154,8 +164,8 @@ class FFNetwork(pl.LightningModule):
             tensorboard.add_figure("val_cf_mat", val_cf_mat, global_step=self.global_step)
             tensorboard.add_figure("val_roc_curve", val_roc_curve, global_step=self.global_step)
 
-    def reset_network_sampler(self): 
-        self.trainer.datamodule.train_dataloader().sampler.reset_sampler()
+    def reset_network_sampler(self, until_idx=None): 
+        self.trainer.datamodule.train_dataloader().sampler.reset_sampler(until_idx)
         for layer in self.children():
             if hasattr(layer, 'reset_parameters'):
                 #print(f"resetting layer: {layer}")

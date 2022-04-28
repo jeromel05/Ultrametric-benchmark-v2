@@ -102,7 +102,7 @@ def run():
                             num_nodes=1, precision=32, logger=logger, max_epochs=args.max_epochs,
                             callbacks=callbacks,
                             log_every_n_steps=1, 
-                            check_val_every_n_epoch=args.eval_freq, 
+                            check_val_every_n_epoch=1, 
                             val_check_interval=val_check_interval) #checks val after each train batch -> expensive
                             #, fast_dev_run=4)
         
@@ -187,13 +187,14 @@ def def_logs_path(args):
     return logs_path
 
 def def_eval_steps(args):
-    eval_steps = np.arange(0, int(args.max_epochs / args.eval_freq), 1) * args.eval_freq
+    eval_steps = np.arange(0, args.max_epochs, 1)
     for i in range(1, len(eval_steps)):
         eval_steps[i] = eval_steps[i-1] + eval_steps[i]
     eval_steps=eval_steps-1
 
     eval_steps = [el for el in eval_steps if el < args.max_epochs]
     eval_steps = eval_steps[1:]
+    eval_steps = eval_steps[::args.eval_freq]
     print(f"Evaluation at steps: {eval_steps[0:15]}..., net will be evaluated {len(eval_steps)} times")
     return eval_steps
 

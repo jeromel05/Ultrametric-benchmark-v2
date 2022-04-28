@@ -89,7 +89,8 @@ class FFNetwork(pl.LightningModule):
         else:
             cond_um_no_shuffle = (np.all(self.hparams.eval_steps == None))
             cond_um_shuffle = (not np.all(self.hparams.eval_steps == None)) and (self.trainer.current_epoch in self.hparams.eval_steps)
-            cond_last_batch = batch_idx == np.ceil(len(self.trainer.datamodule.train_dataloader().sampler.um_indexes) / self.trainer.datamodule.batch_size_train) - 1
+            last_batch_idx = int(np.ceil(len(self.trainer.datamodule.train_dataloader().sampler.um_indexes) / self.trainer.datamodule.batch_size_train) - 1)
+            cond_last_batch = batch_idx == last_batch_idx
             if cond_last_batch and (cond_um_no_shuffle or cond_um_shuffle):
                 #print("#samples per epoch", len(self.trainer.datamodule.train_dataloader().sampler.um_indexes), self.trainer.global_step)
                 self.run_val=True
@@ -131,7 +132,7 @@ class FFNetwork(pl.LightningModule):
                 for _ in range(nb_iter_until_next_eval - 1): self.trainer.datamodule.train_dataloader().sampler.__iter__() # if we have eval_freq > 1 we simulate iterating on the markov_chain
                 self.reset_network_sampler()
 
-        self.run_val=False
+            self.run_val=False
         
     def test_step(self, test_batch, batch_idx):
         x, y = test_batch

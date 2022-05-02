@@ -27,7 +27,6 @@ import torch
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks.base import Callback
 from pytorch_lightning.utilities.exceptions import MisconfigurationException
-from pytorch_lightning.utilities.rank_zero import rank_zero_warn
 
 log = logging.getLogger(__name__)
 
@@ -144,8 +143,6 @@ class Custom_EarlyStopping(Callback):
         if monitor_val is None:
             if self.strict:
                 raise RuntimeError(error_msg)
-            if self.verbose > 0:
-                rank_zero_warn(error_msg, category=RuntimeWarning)
 
             return False
 

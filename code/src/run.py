@@ -17,10 +17,10 @@ import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, TQDMProgressBar, LearningRateMonitor
 
-from Datasets import MnistDataModule, SynthDataModule, SynthPredictDataset
+from datasets import MnistDataModule, SynthDataModule, SynthPredictDataset
 from network import FFNetwork
 from ultrametric_callback import UltraMetricCallback, LitProgressBar
-from Custom_callbacks import Custom_EarlyStopping
+from custom_callbacks import Custom_EarlyStopping
 
 
 def run():

@@ -20,6 +20,7 @@ from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, TQDMProg
 from Datasets import MnistDataModule, SynthDataModule, SynthPredictDataset
 from network import FFNetwork
 from ultrametric_callback import UltraMetricCallback, LitProgressBar
+from Custom_callbacks import Custom_EarlyStopping
 
 
 def run():
@@ -166,8 +167,8 @@ def def_callbacks(args, checkpoint_path, seed):
 
     if args.early_stop:
         callbacks.append(
-            EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=True, 
-                        mode="max", stopping_threshold=0.95, patience=1500, strict=True))
+            Custom_EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=True, 
+                        mode="max", stopping_threshold=0.95, patience=3, strict=True))
 
     if not args.show_progbar:
         progressbar_callback = TQDMProgressBar(refresh_rate=0, process_position=0)

@@ -98,6 +98,7 @@ class Custom_EarlyStopping(Callback):
         check_finite: bool = True,
         stopping_threshold: float = None,
         divergence_threshold: Optional[float] = None,
+        check_on_train_epoch_end: Optional[bool] = None,
     ):
         super().__init__()
         self.monitor = monitor
@@ -111,6 +112,7 @@ class Custom_EarlyStopping(Callback):
         self.divergence_threshold = divergence_threshold
         self.wait_count = 0
         self.stopped_epoch = 0
+        self._check_on_train_epoch_end = check_on_train_epoch_end
 
         if self.mode not in self.mode_dict:
             raise MisconfigurationException(f"`mode` can be {', '.join(self.mode_dict.keys())}, got {self.mode}")
@@ -202,7 +204,6 @@ class Custom_EarlyStopping(Callback):
         should_stop, reason = self._evaluate_stopping_criteria(current)
 
         # stop every ddp process if any world process decides to stop
-        should_stop = trainer.strategy.reduce_boolean_decision(should_stop)
         trainer.should_stop = trainer.should_stop or should_stop
         if should_stop:
             self.stopped_epoch = trainer.current_epoch

@@ -168,7 +168,7 @@ def def_callbacks(args, checkpoint_path, seed):
     if args.early_stop:
         callbacks.append(
             Custom_EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=True, 
-                        mode="max", stopping_threshold=0.95, patience=3, strict=True))
+                        mode="max", stopping_threshold=0.95, patience=5, strict=True))
 
     if not args.show_progbar:
         progressbar_callback = TQDMProgressBar(refresh_rate=0, process_position=0)

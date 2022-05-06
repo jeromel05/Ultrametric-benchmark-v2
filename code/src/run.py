@@ -74,14 +74,6 @@ def run():
         start_time = time.time()
         torch.manual_seed(seed)
         np.random.seed(seed)
-
-        eval_steps=None
-        if args.b_len > 0:
-            eval_steps = def_eval_steps(args)
-            if args.single_eval > 0:
-                eval_steps = [args.single_eval]
-                print(f'Only a single eval will be done at: {eval_steps}')
-
         
         data_module = create_data_modules(args, args.dataset)
         print(f'{bcolors.OKCYAN}Running mode: {args.mode} seed: {seed} {bcolors.ENDC}')
@@ -89,7 +81,7 @@ def run():
 
         model = FFNetwork(input_size=args.input_size, hidden_size=args.hidden_size, nb_classes=nb_classes, 
                         mode=args.mode, optimizer=args.optimizer, lr=args.lr, lr_scheduler=args.lr_scheduler,
-                        eval_steps=eval_steps, max_batches_per_epoch=max_batches_per_epoch, b_len=args.b_len,
+                        max_batches_per_epoch=max_batches_per_epoch, b_len=args.b_len,
                         eval_freq=args.eval_freq)
         
         logger = TensorBoardLogger(logs_path, name=f"metrics", version=f"fold_{seed}")
@@ -104,7 +96,9 @@ def run():
                             callbacks=callbacks,
                             log_every_n_steps=1, 
                             check_val_every_n_epoch=1, 
-                            val_check_interval=val_check_interval) #checks val after each train batch -> expensive
+                            val_check_interval=val_check_interval,
+                            flush_logs_every_n_steps=1)
+                            #num_sanity_val_steps=0) #checks val after each train batch -> expensive
                             #, fast_dev_run=4)
         
         if args.auto_lr_find:
@@ -168,7 +162,7 @@ def def_callbacks(args, checkpoint_path, seed):
     if args.early_stop:
         callbacks.append(
             Custom_EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=True, 
-                        mode="max", stopping_threshold=0.95, patience=5, strict=True))
+                        mode="max", stopping_threshold=0.95, patience=2, strict=True))
 
     if not args.show_progbar:
         progressbar_callback = TQDMProgressBar(refresh_rate=0, process_position=0)
@@ -186,18 +180,6 @@ def def_logs_path(args):
     logs_path = os.path.join(args.logfolder, ckpt_name)
     print(f"Saving logs at: {logs_path}")
     return logs_path
-
-def def_eval_steps(args):
-    eval_steps = np.arange(0, args.max_epochs, 1)
-    for i in range(1, len(eval_steps)):
-        eval_steps[i] = eval_steps[i-1] + eval_steps[i]
-    eval_steps=eval_steps-1
-
-    eval_steps = [el for el in eval_steps if el < args.max_epochs]
-    eval_steps = eval_steps[1:]
-    eval_steps = eval_steps[::args.eval_freq]
-    print(f"Evaluation at steps: {eval_steps[0:15]}..., net will be evaluated {len(eval_steps)} times")
-    return eval_steps
 
 if __name__ == '__main__':
     run()

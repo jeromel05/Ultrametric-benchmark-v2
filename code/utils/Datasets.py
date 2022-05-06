@@ -172,6 +172,7 @@ class UltraMetricSampler(torch.utils.data.Sampler):
         else:
             self.temp_shuff_chain[:self.total_length] = shuffle_blocks_v2(self.chain[:self.total_length], self.b_len)
         self.temp_length = 0
+        self.total_length = 0
 
 
 class BinarySampler(torch.utils.data.Sampler):

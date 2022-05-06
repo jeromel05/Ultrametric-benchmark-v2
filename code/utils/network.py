@@ -11,7 +11,7 @@ from util_functions import make_confusion_matrix_figure, make_roc_curves_figure,
 
 class FFNetwork(pl.LightningModule):
     def __init__(self, input_size, hidden_size, nb_classes, mode, optimizer, lr, lr_scheduler, 
-                eval_steps, max_batches_per_epoch, b_len, eval_freq):
+                 max_batches_per_epoch, b_len, eval_freq):
         super().__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -22,6 +22,10 @@ class FFNetwork(pl.LightningModule):
 
         self.run_val=True
         self.max_batches_per_epoch=max_batches_per_epoch
+        self.last_val_step=0
+        self.last_val_epoch=0
+        self.curr_val_epoch=0
+        self.curr_val_step=0
 
         self.save_hyperparameters()
 
@@ -87,12 +91,14 @@ class FFNetwork(pl.LightningModule):
         if not self.hparams.mode == 'um':
             self.run_val=True
         else:
-            cond_um_no_shuffle = (np.all(self.hparams.eval_steps == None))
-            cond_um_shuffle = (not np.all(self.hparams.eval_steps == None)) and (self.trainer.current_epoch in self.hparams.eval_steps)
+            cond_um_shuffle = self.hparams.b_len > 0
             last_batch_idx = int(np.ceil(len(self.trainer.datamodule.train_dataloader().sampler.um_indexes) / self.trainer.datamodule.batch_size_train) - 1)
-            cond_last_batch = batch_idx == last_batch_idx
-            if cond_last_batch and (cond_um_no_shuffle or cond_um_shuffle):
-                #print("#samples per epoch", len(self.trainer.datamodule.train_dataloader().sampler.um_indexes), self.trainer.global_step)
+            #cond_last_batch = batch_idx == last_batch_idx
+            cond_b_len = self.trainer.global_step >= self.hparams.b_len * self.hparams.eval_freq + self.last_val_step + self.curr_val_step
+            cond_epoch_zero = self.trainer.current_epoch == 0 and batch_idx==0
+            if (not cond_um_shuffle) or (cond_um_shuffle and cond_b_len) or cond_epoch_zero:
+                #print((self.trainer.current_epoch == 0), (not cond_um_shuffle), cond_um_shuffle, cond_b_len, cond_last_batch)
+                print(f'#steps taken for this eval: {self.trainer.global_step - self.last_val_step}')
                 self.run_val=True
         return loss
 
@@ -109,28 +115,32 @@ class FFNetwork(pl.LightningModule):
             val_acc, val_ap, val_auroc_, val_cf_mat, val_roc_curve = self.evaluate_metrics(o, 
                                                                 target, num_classes, compute_cf_mat=False,
                                                                 cm_figure=False, roc_figure=False)
+            
             self.log('val_acc', val_acc) #, on_step=True, on_epoch=False, prog_bar=True, logger=True)
             #self.log('val_ap', val_ap, on_step=False, on_epoch=True, prog_bar=True, logger=True)
             #self.log('val_auroc', val_auroc_, on_step=False, on_epoch=True, prog_bar=False, logger=True)
-            if not np.all(self.hparams.eval_steps == None) and self.trainer.current_epoch in self.hparams.eval_steps:
-                val_epoch = self.hparams.eval_steps.index(self.trainer.current_epoch) # return the idx as the idx is the true epoch
-            else:
-                val_epoch = self.trainer.current_epoch
-            self.log('val_epoch', float(val_epoch)) #, on_step=True, on_epoch=False, prog_bar=False, logger=True)
-            self.log('val_step', float(self.trainer.global_step))
+            self.curr_val_epoch = self.trainer.current_epoch
+            self.curr_val_step = self.trainer.global_step
+            if self.hparams.b_len > 0:
+                self.curr_val_epoch -= self.last_val_epoch
+                self.curr_val_step -= self.last_val_step
+                self.last_val_step = self.trainer.global_step
+                self.last_val_epoch = self.trainer.current_epoch
+                assert(self.curr_val_epoch >= 0 and self.curr_val_step >= 0)
+            self.log('val_epoch', float(self.curr_val_epoch)) #, on_step=True, on_epoch=False, prog_bar=False, logger=True)
+            self.log('val_step', float(self.curr_val_step))
 
-            print(f"Val epoch: {self.trainer.current_epoch}, loss: {loss:.3}, acc: {val_acc:.3}")
+            print(f"Val epoch: {self.curr_val_epoch}, step: {self.curr_val_step}, tot_step: {self.trainer.global_step}, loss: {loss:.3}, acc: {val_acc:.3}")
+            
             if not val_cf_mat == None:
                 self.log_figures(num_classes, val_cf_mat, val_roc_curve)
 
-            if (self.hparams.mode == 'um') and (not np.all(self.hparams.eval_steps == None)):
+            until_idx=self.curr_val_step
+            if (self.hparams.mode == 'um') and self.hparams.b_len > 0: # should be checked in argparse assert
                 #print(f'UM RESET at epoch: {self.trainer.current_epoch}')
-                if len(self.hparams.eval_steps) == 1:
-                    nb_iter_until_next_eval =  self.hparams.eval_steps[0] # PAS POSSBILE de calculer a l'avance LE NB DE SAMPLES PASSES DANS LE RESEAU AV
-                else:
-                    nb_iter_until_next_eval = self.hparams.eval_freq
-                for _ in range(nb_iter_until_next_eval - 1): self.trainer.datamodule.train_dataloader().sampler.__iter__() # if we have eval_freq > 1 we simulate iterating on the markov_chain
-                self.reset_network_sampler()
+                if self.hparams.eval_freq > 1:
+                    until_idx += self.hparams.b_len * self.hparams.eval_freq
+                self.reset_network_sampler(until_idx=until_idx)
 
             self.run_val=False
         
@@ -171,10 +181,6 @@ class FFNetwork(pl.LightningModule):
             if hasattr(layer, 'reset_parameters'):
                 #print(f"resetting layer: {layer}")
                 layer.reset_parameters()
-
-        if max(self.hparams.eval_steps) < self.trainer.current_epoch:
-            print("Stopping because no more steps in eval steps list")
-            self.trainer.should_stop = True    
 
     def on_train_epoch_start(self) -> None:
         self.run_val=False

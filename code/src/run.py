@@ -56,7 +56,8 @@ def run():
     parser.add_argument('--metric', type=str, default="val_loss", choices=['val_acc', 'val_loss', 'train_acc'], help="define datset to use")
     parser.add_argument('--auto_lr_find', action='store_true', help="define level of verbosity")
     parser.add_argument('--lr_scheduler', type=str, default=None, choices=['reduce_lr'], help="define datset to use")
-    parser.add_argument('--eval_freq', type=int, default=1, help="define level of verbosity")
+    parser.add_argument('--eval_freq', type=int, default=250, help="define level of verbosity")
+    parser.add_argument('--eval_freq_factor', type=int, default=2, help="define level of verbosity")
     parser.add_argument('--job_id', type=str, default="", help="define level of verbosity")
     parser.add_argument('--early_stop', action='store_true', help="define level of verbosity")
     parser.add_argument('--start_seed', type=int, default=0, help="define level of verbosity")
@@ -67,7 +68,9 @@ def run():
     print("All args: ", args)
     nb_classes = 2**args.max_tree_depth
     logs_path = def_logs_path(args)
-    max_batches_per_epoch = int(int((1-args.test_split) * nb_classes * args.noise_level) / args.batch_size_train)
+    max_batches_per_epoch = int(int((1-args.test_split) * nb_classes * args.noise_level) / args.batch_size_train)    
+    eval_freq = (args.eval_freq // args.b_len) * args.b_len if args.b_len > 0 else args.eval_freq # ensure eval_freq is a multiple of b_len
+    print(f'Start eval_freq: {eval_freq}')
 
     # training
     for seed in np.arange(args.start_seed, args.start_seed + args.nb_folds, step=1):
@@ -82,14 +85,16 @@ def run():
         model = FFNetwork(input_size=args.input_size, hidden_size=args.hidden_size, nb_classes=nb_classes, 
                         mode=args.mode, optimizer=args.optimizer, lr=args.lr, lr_scheduler=args.lr_scheduler,
                         max_batches_per_epoch=max_batches_per_epoch, b_len=args.b_len,
-                        eval_freq=args.eval_freq)
+                        eval_freq=eval_freq, eval_freq_factor=args.eval_freq_factor)
         
         logger = TensorBoardLogger(logs_path, name=f"metrics", version=f"fold_{seed}")
         if args.mode == 'um':
             data_module.set_markov_chain(args, seed)
             val_check_interval=1
+            flush_logs_every_n_steps=1
         else:
-            val_check_interval=10
+            val_check_interval=100
+            flush_logs_every_n_steps=500
             
         trainer = pl.Trainer(default_root_dir=logs_path, gpus=args.gpu, 
                             num_nodes=1, precision=32, logger=logger, max_epochs=args.max_epochs,
@@ -97,7 +102,7 @@ def run():
                             log_every_n_steps=1, 
                             check_val_every_n_epoch=1, 
                             val_check_interval=val_check_interval,
-                            flush_logs_every_n_steps=1)
+                            flush_logs_every_n_steps=flush_logs_every_n_steps)
                             #num_sanity_val_steps=0) #checks val after each train batch -> expensive
                             #, fast_dev_run=4)
         

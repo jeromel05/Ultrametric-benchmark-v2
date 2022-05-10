@@ -57,7 +57,7 @@ def run():
     parser.add_argument('--auto_lr_find', action='store_true', help="define level of verbosity")
     parser.add_argument('--lr_scheduler', type=str, default=None, choices=['reduce_lr'], help="define datset to use")
     parser.add_argument('--eval_freq', type=int, default=250, help="define level of verbosity")
-    parser.add_argument('--eval_freq_factor', type=int, default=2, help="define level of verbosity")
+    parser.add_argument('--eval_freq_factor', type=float, default=2.0, help="define level of verbosity")
     parser.add_argument('--job_id', type=str, default="", help="define level of verbosity")
     parser.add_argument('--early_stop', action='store_true', help="define level of verbosity")
     parser.add_argument('--start_seed', type=int, default=0, help="define level of verbosity")
@@ -68,8 +68,15 @@ def run():
     print("All args: ", args)
     nb_classes = 2**args.max_tree_depth
     logs_path = def_logs_path(args)
-    max_batches_per_epoch = int(int((1-args.test_split) * nb_classes * args.noise_level) / args.batch_size_train)    
-    eval_freq = (args.eval_freq // args.b_len) * args.b_len if args.b_len > 0 else args.eval_freq # ensure eval_freq is a multiple of b_len
+    max_batches_per_epoch = int(int((1-args.test_split) * nb_classes * args.noise_level) / args.batch_size_train)
+    eval_freq = args.eval_freq
+    if eval_freq <= args.b_len: 
+        eval_freq = args.b_len
+    elif args.b_len > 0: 
+        eval_freq = (args.eval_freq // args.b_len) * args.b_len # ensure eval_freq is a multiple of b_len
+    else: 
+        eval_freq = args.eval_freq 
+    assert(eval_freq > 0)
     print(f'Start eval_freq: {eval_freq}')
 
     # training
@@ -91,19 +98,20 @@ def run():
         if args.mode == 'um':
             data_module.set_markov_chain(args, seed)
             val_check_interval=1
-            flush_logs_every_n_steps=1
-        else:
-            val_check_interval=100
-            flush_logs_every_n_steps=500
+            if args.b_len > 0:
+                check_val_every_n_epoch=1
+            else:
+                check_val_every_n_epoch=5
+        elif args.mode == 'rand':
+            val_check_interval=15
             
         trainer = pl.Trainer(default_root_dir=logs_path, gpus=args.gpu, 
                             num_nodes=1, precision=32, logger=logger, max_epochs=args.max_epochs,
                             callbacks=callbacks,
-                            log_every_n_steps=1, 
-                            check_val_every_n_epoch=1, 
-                            val_check_interval=val_check_interval,
-                            flush_logs_every_n_steps=flush_logs_every_n_steps)
-                            #num_sanity_val_steps=0) #checks val after each train batch -> expensive
+                            #log_every_n_steps=1, 
+                            check_val_every_n_epoch=check_val_every_n_epoch, 
+                            val_check_interval=val_check_interval)
+                            #num_sanity_val_steps=0)
                             #, fast_dev_run=4)
         
         if args.auto_lr_find:
@@ -167,7 +175,7 @@ def def_callbacks(args, checkpoint_path, seed):
     if args.early_stop:
         callbacks.append(
             Custom_EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=True, 
-                        mode="max", stopping_threshold=0.95, patience=2, strict=True))
+                        mode="max", stopping_threshold=0.95, patience=3, strict=True))
 
     if not args.show_progbar:
         progressbar_callback = TQDMProgressBar(refresh_rate=0, process_position=0)
@@ -181,7 +189,7 @@ def def_callbacks(args, checkpoint_path, seed):
 def def_logs_path(args):
     now = datetime.now()
     dt_string = now.strftime("%d%m_%H%M")
-    ckpt_name = f"{args.job_id}_{dt_string}_{args.dataset}_{args.mode}_b{args.b_len}_d{args.max_tree_depth}_h{args.hidden_size}_lr{args.lr}/"
+    ckpt_name = f"{args.job_id}_{dt_string}_{args.dataset}_{args.mode}_b{args.b_len}_d{args.max_tree_depth}_h{args.hidden_size}_lr{args.lr}_rep{args.start_seed}/"
     logs_path = os.path.join(args.logfolder, ckpt_name)
     print(f"Saving logs at: {logs_path}")
     return logs_path

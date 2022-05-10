@@ -101,7 +101,7 @@ class FFNetwork(pl.LightningModule):
             cond_epoch_zero = (self.trainer.current_epoch==0 and batch_idx==0)
             if cond_b_len or cond_epoch_zero:
                 #print((self.trainer.current_epoch == 0), (not cond_um_shuffle), cond_um_shuffle, cond_b_len, cond_last_batch)
-                print(f'#steps taken for this eval: {self.trainer.global_step - self.last_val_step}')
+                if self.hparams.b_len > 0: print(f'#steps taken for this eval: {self.trainer.global_step - self.last_val_step}')
                 self.run_val=True
 
         return loss
@@ -133,6 +133,7 @@ class FFNetwork(pl.LightningModule):
                 assert(self.curr_val_epoch >= 0 and self.curr_val_step >= 0)
             self.log('val_epoch', float(self.curr_val_epoch)) #, on_step=True, on_epoch=False, prog_bar=False, logger=True)
             self.log('val_step', float(self.curr_val_step))
+            self.trainer.logger.save() # flushes to logger
 
             print(f"Val epoch: {self.curr_val_epoch}, step: {self.curr_val_step}, tot_step: {self.trainer.global_step}, loss: {loss:.3}, acc: {val_acc:.3}")
             
@@ -143,12 +144,23 @@ class FFNetwork(pl.LightningModule):
             if self.hparams.mode == 'um' and self.hparams.b_len > 0: # should be checked in argparse assert
                 #print(f'UM RESET at epoch: {self.trainer.current_epoch}')
                 if self.trainer.current_epoch > 0:
-                    if abs(self.last_val_acc - val_acc) < 0.03: self.eval_freq_factor *= 1.2
-                    elif abs(self.last_val_acc - val_acc) > 0.15: self.eval_freq_factor *= 0.8
-                    self.curr_eval_freq *= self.eval_freq_factor
-                    self.curr_eval_freq = int((self.curr_eval_freq // self.hparams.b_len) * self.hparams.b_len) # multiple of b_len
+                    if abs(self.last_val_acc - val_acc) < 0.05: self.eval_freq_factor *= 1.15
+                    elif abs(self.last_val_acc - val_acc) > 0.175: self.eval_freq_factor *= 0.85
+                    if self.last_val_acc < 0.90: # stop exp growth at val_acc == 0.9
+                        self.curr_eval_freq *= self.eval_freq_factor
+                    else:
+                        self.curr_eval_freq *= 0.8
+                    self.curr_eval_freq = int(((self.curr_eval_freq // self.hparams.b_len)+1) * self.hparams.b_len) # multiple of b_len
+                    if self.curr_eval_freq > 20000:
+                        self.eval_freq_factor = 1.2
+                        if self.curr_eval_freq > 25000: # upper threshold for eval_freq, otherwise will never be reached and timeout
+                            self.curr_eval_freq = 25000
+                    if self.curr_eval_freq < self.hparams.b_len:
+                        self.curr_eval_freq = self.hparams.b_len
+                        self.eval_freq_factor = 2.0
+                    
                 until_idx += self.curr_eval_freq
-                print(f'Chain shuffled until: {until_idx}')
+                print(f'Chain shuffled until: {until_idx}, curr_eval_freq: {self.curr_eval_freq}')
                 self.reset_network_sampler(until_idx=until_idx)
 
             self.run_val=False

@@ -63,12 +63,14 @@ def run():
     parser.add_argument('--start_seed', type=int, default=0, help="define level of verbosity")
     parser.add_argument('--show_progbar', action='store_true', help="define level of verbosity")
     parser.add_argument('--single_eval', type=int, default=0, help="define level of verbosity")
+    parser.add_argument('--save_ckpt', action='store_true', default=False, help="define level of verbosity")
+
+    
 
     args = parser.parse_args()
     print("All args: ", args)
     nb_classes = 2**args.max_tree_depth
     logs_path = def_logs_path(args)
-    max_batches_per_epoch = int(int((1-args.test_split) * nb_classes * args.noise_level) / args.batch_size_train)
     eval_freq = args.eval_freq
     if eval_freq <= args.b_len: 
         eval_freq = args.b_len
@@ -91,8 +93,7 @@ def run():
 
         model = FFNetwork(input_size=args.input_size, hidden_size=args.hidden_size, nb_classes=nb_classes, 
                         mode=args.mode, optimizer=args.optimizer, lr=args.lr, lr_scheduler=args.lr_scheduler,
-                        max_batches_per_epoch=max_batches_per_epoch, b_len=args.b_len,
-                        eval_freq=eval_freq, eval_freq_factor=args.eval_freq_factor)
+                        b_len=args.b_len, eval_freq=eval_freq, eval_freq_factor=args.eval_freq_factor)
         
         logger = TensorBoardLogger(logs_path, name=f"metrics", version=f"fold_{seed}")
         if args.mode == 'um':
@@ -101,7 +102,7 @@ def run():
             if args.b_len > 0:
                 check_val_every_n_epoch=1
             else:
-                check_val_every_n_epoch=5
+                check_val_every_n_epoch=1
         elif args.mode == 'rand':
             val_check_interval=15
             
@@ -110,7 +111,8 @@ def run():
                             callbacks=callbacks,
                             #log_every_n_steps=1, 
                             check_val_every_n_epoch=check_val_every_n_epoch, 
-                            val_check_interval=val_check_interval)
+                            val_check_interval=val_check_interval,
+                            enable_checkpointing=args.save_ckpt)
                             #num_sanity_val_steps=0)
                             #, fast_dev_run=4)
         
@@ -122,6 +124,7 @@ def run():
                 model.hparams.lr = suggested_lr
 
         trainer.fit(model, data_module)
+        
         if not checkpoint_callback == None:
             best_model_path = checkpoint_callback.best_model_path
             print(f"{bcolors.OKCYAN}best_model_path: {best_model_path} {bcolors.ENDC}")
@@ -164,18 +167,20 @@ def def_callbacks(args, checkpoint_path, seed):
     checkpoint_folder_name = f"fold_{seed}/"
     checkpoint_path_fold = os.path.join(checkpoint_path, checkpoint_folder_name)
 
-    optim_mode = 'max' if 'acc' in args.metric else 'min'
-    print(f'Optimizing on {args.metric} mode {optim_mode}')
-    if args.single_eval == 0:
+    
+    if args.save_ckpt and (args.single_eval == 0):
+        optim_mode = 'max' if 'acc' in args.metric else 'min'
+        print(f'Saving ckpt with {optim_mode} {args.metric}')
         checkpoint_callback = ModelCheckpoint(monitor=args.metric, dirpath=checkpoint_path_fold,
                                         filename="{epoch:02d}_{val_loss:.2f}",
                                         save_top_k=1, mode=optim_mode)
         callbacks.append(checkpoint_callback)
 
     if args.early_stop:
+        patience = 3 if args.b_len > 0 else 30
         callbacks.append(
             Custom_EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=True, 
-                        mode="max", stopping_threshold=0.95, patience=3, strict=True))
+                        mode="max", stopping_threshold=0.95, patience=patience, strict=True))
 
     if not args.show_progbar:
         progressbar_callback = TQDMProgressBar(refresh_rate=0, process_position=0)

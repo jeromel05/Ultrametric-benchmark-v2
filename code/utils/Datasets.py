@@ -139,13 +139,12 @@ class UltraMetricSampler(torch.utils.data.Sampler):
         self.class_index = class_index
         self.nb_classes = nb_classes
         self.total_length = 0
-        self.temp_length = 0
         self.b_len = b_len
         self.um_indexes = []
 
     def __iter__(self):
         um_indexes = []            
-        idx = self.temp_length
+        idx = self.total_length
         nb_previous_occurences = np.zeros(self.nb_classes, dtype=np.int32)
         um_class = 0
 
@@ -153,11 +152,10 @@ class UltraMetricSampler(torch.utils.data.Sampler):
             um_idx = self.class_index[um_class][nb_previous_occurences[um_class]]
             um_indexes.append(um_idx)
             um_class = self.temp_shuff_chain[idx]
-            nb_previous_occurences[um_class] = nb_previous_occurences[um_class] + 1
-            idx=idx+1
+            nb_previous_occurences[um_class] += 1
+            idx += 1
 
-        self.total_length = self.total_length + len(um_indexes)
-        self.temp_length = self.temp_length + len(um_indexes) # temp len is reset after each evaluation, total len is not
+        self.total_length += len(um_indexes)
         self.um_indexes = um_indexes
         return iter(um_indexes)
 
@@ -171,9 +169,7 @@ class UltraMetricSampler(torch.utils.data.Sampler):
             self.temp_shuff_chain[:until_idx] = shuffle_blocks_v2(self.chain[:until_idx], self.b_len)
         else:
             self.temp_shuff_chain[:self.total_length] = shuffle_blocks_v2(self.chain[:self.total_length], self.b_len)
-        self.temp_length = 0
         self.total_length = 0
-
 
 class BinarySampler(torch.utils.data.Sampler):
     def __init__(self, data_source, class_index, chain, train=True):
@@ -234,13 +230,12 @@ class UMDataModule(pl.LightningDataModule):
     
     def set_markov_chain(self, args, seed):
         if args.generate_chain:
-            markov_chain = generate_markov_chain(chain_length=args.total_sample_nb, T=args.T, 
+            self.markov_chain = generate_markov_chain(chain_length=args.total_sample_nb, T=args.T, 
                                                 tree_levels=args.max_tree_depth, dia=0).tolist()
         else:
             saved_chain_name = f'saved_chains/tree_levels{args.max_tree_depth:02d}_clen1.0e+06_seed{seed:}.npy'
             path_to_data = join(os.getcwd(), args.datafolder, saved_chain_name)
-            markov_chain = np.load(path_to_data).tolist()
-        self.markov_chain = markov_chain
+            self.markov_chain = np.load(path_to_data).tolist()
 
                              
 class MnistDataModule(pl.LightningDataModule):

@@ -11,7 +11,7 @@ from util_functions import make_confusion_matrix_figure, make_roc_curves_figure,
 
 class FFNetwork(pl.LightningModule):
     def __init__(self, input_size, hidden_size, nb_classes, mode, optimizer, lr, lr_scheduler, 
-                 max_batches_per_epoch, b_len, eval_freq, eval_freq_factor):
+                 b_len, eval_freq, eval_freq_factor):
         super().__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -21,7 +21,6 @@ class FFNetwork(pl.LightningModule):
         self.softmax = nn.Softmax(dim = 1)
 
         self.run_val=True
-        self.max_batches_per_epoch=max_batches_per_epoch
         self.last_val_step=0
         self.last_val_epoch=0
         self.curr_val_epoch=0
@@ -92,9 +91,11 @@ class FFNetwork(pl.LightningModule):
         self.log('train_acc', train_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         
         self.run_val=False
-        last_batch_idx = int(np.ceil(len(self.trainer.datamodule.train_dataloader().sampler.um_indexes) / self.trainer.datamodule.batch_size_train) - 1)
+        last_batch_idx = len(self.trainer.datamodule.train_dataloader().sampler.um_indexes) // self.trainer.datamodule.batch_size_train
         cond_last_batch = batch_idx == last_batch_idx
+        print(batch_idx, end=" ")
         if ((not self.hparams.mode == 'um') or self.hparams.b_len == 0) and cond_last_batch:
+            #print('batch_idx', batch_idx, last_batch_idx, len(y), list(set(target)), "aaa", target)
             self.run_val=True
         else:
             cond_b_len = self.trainer.global_step >= self.curr_eval_freq + self.last_val_step + self.curr_val_step
@@ -146,7 +147,7 @@ class FFNetwork(pl.LightningModule):
                 if self.trainer.current_epoch > 0:
                     if abs(self.last_val_acc - val_acc) < 0.05: self.eval_freq_factor *= 1.15
                     elif abs(self.last_val_acc - val_acc) > 0.175: self.eval_freq_factor *= 0.85
-                    if self.last_val_acc < 0.90: # stop exp growth at val_acc == 0.9
+                    if self.last_val_acc < 0.85: # stop exp growth at val_acc == 0.85
                         self.curr_eval_freq *= self.eval_freq_factor
                     else:
                         self.curr_eval_freq *= 0.8
@@ -157,7 +158,7 @@ class FFNetwork(pl.LightningModule):
                             self.curr_eval_freq = 25000
                     if self.curr_eval_freq < self.hparams.b_len:
                         self.curr_eval_freq = self.hparams.b_len
-                        self.eval_freq_factor = 2.0
+                        self.eval_freq_factor = 2.5
                     
                 until_idx += self.curr_eval_freq
                 print(f'Chain shuffled until: {until_idx}, curr_eval_freq: {self.curr_eval_freq}')

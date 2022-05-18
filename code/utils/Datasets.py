@@ -166,6 +166,7 @@ class UltraMetricSampler(torch.utils.data.Sampler):
         assert(self.b_len > 0)
         self.temp_shuff_chain = self.chain.copy()
         if not until_idx == None:
+            print(f"shuffling_v2 until {until_idx}")
             self.temp_shuff_chain[:until_idx] = shuffle_blocks_v2(self.chain[:until_idx], self.b_len)
         else:
             self.temp_shuff_chain[:self.total_length] = shuffle_blocks_v2(self.chain[:self.total_length], self.b_len)
@@ -202,7 +203,7 @@ class BinarySampler(torch.utils.data.Sampler):
 
 class UMDataModule(pl.LightningDataModule):
     def __init__(self, max_depth: int, data_dir: str = "./", batch_size_train: int=128, batch_size_test: int=1000, 
-                 num_workers: int=4, mode: str='rand', chain=None, b_len=0):
+                 num_workers: int=4, mode: str='rand', chain=None, b_len=0, no_reshuffle=False):
         super().__init__()
         self.data_dir = data_dir
         self.batch_size_train = batch_size_train
@@ -215,6 +216,7 @@ class UMDataModule(pl.LightningDataModule):
         self.classes = np.arange(0, self.nb_classes)
         self.markov_chain = chain
         self.b_len=b_len
+        self.no_reshuffle=no_reshuffle
 
     def train_dataloader(self):
         return DataLoader(self.um_train_ds, batch_size=self.batch_size_train, shuffle=False, 
@@ -236,6 +238,9 @@ class UMDataModule(pl.LightningDataModule):
             saved_chain_name = f'saved_chains/tree_levels{args.max_tree_depth:02d}_clen1.0e+06_seed{seed:}.npy'
             path_to_data = join(os.getcwd(), args.datafolder, saved_chain_name)
             self.markov_chain = np.load(path_to_data).tolist()
+
+        if self.no_reshuffle: # if we shuffle just once
+            self.markov_chain[:10000] = shuffle_blocks_v2(self.markov_chain[:10000], self.b_len)
 
                              
 class MnistDataModule(pl.LightningDataModule):
@@ -284,10 +289,10 @@ class MnistDataModule(pl.LightningDataModule):
 class SynthDataModule(UMDataModule):
     def __init__(self, max_depth: int, data_dir: str = "./", batch_size_train: int=8, batch_size_test: int=1000, 
                  num_workers: int=4, mode: str='rand', chain=None, leaf_length=200, noise_level=1, p_flip=0.1,
-                 p_noise=0.02, normalize_data=False, repeat_data=1, test_split=0.1, b_len=0):
+                 p_noise=0.02, normalize_data=False, repeat_data=1, test_split=0.1, b_len=0, no_reshuffle=False):
         super().__init__(max_depth=max_depth, data_dir=data_dir, batch_size_train=batch_size_train, 
                         batch_size_test=batch_size_test, num_workers=num_workers, mode=mode, chain=chain,
-                        b_len=b_len)
+                        b_len=b_len, no_reshuffle=no_reshuffle)
         self.leaf_length = leaf_length
         self.tree = SynthUltrametricTree(max_depth=max_depth, p_flip=p_flip, p_noise=p_noise, 
                                          leaf_length=leaf_length, shuffle_labels=True,

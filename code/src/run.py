@@ -62,7 +62,7 @@ def run():
     parser.add_argument('--early_stop', action='store_true', help="define level of verbosity")
     parser.add_argument('--start_seed', type=int, default=0, help="define level of verbosity")
     parser.add_argument('--show_progbar', action='store_true', help="define level of verbosity")
-    parser.add_argument('--single_eval', type=int, default=0, help="define level of verbosity")
+    parser.add_argument('--no_reshuffle', action='store_true', help="true means eval only at one point")
     parser.add_argument('--save_ckpt', action='store_true', default=False, help="define level of verbosity")
 
     
@@ -93,16 +93,12 @@ def run():
 
         model = FFNetwork(input_size=args.input_size, hidden_size=args.hidden_size, nb_classes=nb_classes, 
                         mode=args.mode, optimizer=args.optimizer, lr=args.lr, lr_scheduler=args.lr_scheduler,
-                        b_len=args.b_len, eval_freq=eval_freq, eval_freq_factor=args.eval_freq_factor)
+                        b_len=args.b_len, eval_freq=eval_freq, eval_freq_factor=args.eval_freq_factor, no_reshuffle=args.no_reshuffle)
         
         logger = TensorBoardLogger(logs_path, name=f"metrics", version=f"fold_{seed}")
         if args.mode == 'um':
             data_module.set_markov_chain(args, seed)
             val_check_interval=1
-            if args.b_len > 0:
-                check_val_every_n_epoch=1
-            else:
-                check_val_every_n_epoch=1
         elif args.mode == 'rand':
             val_check_interval=15
             
@@ -110,7 +106,7 @@ def run():
                             num_nodes=1, precision=32, logger=logger, max_epochs=args.max_epochs,
                             callbacks=callbacks,
                             #log_every_n_steps=1, 
-                            check_val_every_n_epoch=check_val_every_n_epoch, 
+                            check_val_every_n_epoch=1, 
                             val_check_interval=val_check_interval,
                             enable_checkpointing=args.save_ckpt)
                             #num_sanity_val_steps=0)
@@ -124,7 +120,7 @@ def run():
                 model.hparams.lr = suggested_lr
 
         trainer.fit(model, data_module)
-        
+
         if not checkpoint_callback == None:
             best_model_path = checkpoint_callback.best_model_path
             print(f"{bcolors.OKCYAN}best_model_path: {best_model_path} {bcolors.ENDC}")
@@ -151,7 +147,8 @@ def create_data_modules(args, dataset_name: str):
                                         num_workers=args.num_workers, max_depth=args.max_tree_depth, 
                                         noise_level=args.noise_level, p_flip=args.p_flip, p_noise=args.p_noise, 
                                         leaf_length=args.input_size, normalize_data=args.normalize_data, 
-                                        repeat_data=args.repeat_data, test_split=args.test_split, b_len=args.b_len)
+                                        repeat_data=args.repeat_data, test_split=args.test_split, b_len=args.b_len,
+                                        no_reshuffle=args.no_reshuffle)
         return data_module
 
 def find_lr(trainer, model, checkpoint_path_fold, data_module):
@@ -168,7 +165,7 @@ def def_callbacks(args, checkpoint_path, seed):
     checkpoint_path_fold = os.path.join(checkpoint_path, checkpoint_folder_name)
 
     
-    if args.save_ckpt and (args.single_eval == 0):
+    if args.save_ckpt and (not args.no_reshuffle):
         optim_mode = 'max' if 'acc' in args.metric else 'min'
         print(f'Saving ckpt with {optim_mode} {args.metric}')
         checkpoint_callback = ModelCheckpoint(monitor=args.metric, dirpath=checkpoint_path_fold,
@@ -177,10 +174,11 @@ def def_callbacks(args, checkpoint_path, seed):
         callbacks.append(checkpoint_callback)
 
     if args.early_stop:
-        patience = 3 if args.b_len > 0 else 30
+        patience = 3 if args.b_len > 0 else 50
+        stopping_threshold = 0.95 if args.b_len > 0 else 1.0
         callbacks.append(
             Custom_EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=True, 
-                        mode="max", stopping_threshold=0.95, patience=patience, strict=True))
+                        mode="max", stopping_threshold=stopping_threshold, patience=patience, strict=True))
 
     if not args.show_progbar:
         progressbar_callback = TQDMProgressBar(refresh_rate=0, process_position=0)

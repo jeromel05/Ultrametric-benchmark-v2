@@ -166,7 +166,6 @@ class UltraMetricSampler(torch.utils.data.Sampler):
         assert(self.b_len > 0)
         self.temp_shuff_chain = self.chain.copy()
         if not until_idx == None:
-            print(f"shuffling_v2 until {until_idx}")
             self.temp_shuff_chain[:until_idx] = shuffle_blocks_v2(self.chain[:until_idx], self.b_len)
         else:
             self.temp_shuff_chain[:self.total_length] = shuffle_blocks_v2(self.chain[:self.total_length], self.b_len)

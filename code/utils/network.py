@@ -93,13 +93,14 @@ class FFNetwork(pl.LightningModule):
         self.run_val=False
         last_batch_idx = len(self.trainer.datamodule.train_dataloader().sampler.um_indexes) // self.trainer.datamodule.batch_size_train
         cond_last_batch = batch_idx == last_batch_idx
+        cond_epoch_zero = (self.trainer.current_epoch==0 and batch_idx==0)
         #print(batch_idx, end=" ")
-        if ((not self.hparams.mode == 'um') or self.hparams.b_len == 0 or self.hparams.no_reshuffle) and cond_last_batch:
+        if (((not self.hparams.mode == 'um') or (self.hparams.b_len == 0 and self.trainer.current_epoch % 5==0) or self.hparams.no_reshuffle) and cond_last_batch) or cond_epoch_zero:
             #print('batch_idx', batch_idx, last_batch_idx, len(y), list(set(target)), "aaa", target)
             self.run_val=True
         else:
             cond_b_len = self.trainer.global_step >= self.curr_eval_freq + self.last_val_step + self.curr_val_step
-            cond_epoch_zero = (self.trainer.current_epoch==0 and batch_idx==0)
+            
             if cond_b_len or cond_epoch_zero:
                 #print((self.trainer.current_epoch == 0), (not cond_um_shuffle), cond_um_shuffle, cond_b_len, cond_last_batch)
                 if self.hparams.b_len > 0: print(f'#steps taken for this eval: {self.trainer.global_step - self.last_val_step}')
@@ -159,7 +160,7 @@ class FFNetwork(pl.LightningModule):
                                 self.curr_eval_freq = 25000
                         if self.curr_eval_freq < self.hparams.b_len:
                             self.curr_eval_freq = self.hparams.b_len
-                            self.eval_freq_factor = 2.5
+                            self.eval_freq_factor = 2.2
                         
                     until_idx += self.curr_eval_freq
                     print(f'Chain shuffled until: {until_idx}, curr_eval_freq: {self.curr_eval_freq}')

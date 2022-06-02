@@ -11,7 +11,7 @@ from util_functions import make_confusion_matrix_figure, make_roc_curves_figure,
 
 class FFNetwork(pl.LightningModule):
     def __init__(self, input_size, hidden_size, nb_classes, mode, optimizer, lr, lr_scheduler, 
-                 b_len, eval_freq, eval_freq_factor, no_reshuffle):
+                 b_len, eval_freq, eval_freq_factor, no_reshuffle,  last_val_step=0):
         super().__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -21,13 +21,17 @@ class FFNetwork(pl.LightningModule):
         self.softmax = nn.Softmax(dim = 1)
 
         self.run_val=True
-        self.last_val_step=0
+        self.last_val_step=last_val_step
         self.last_val_epoch=0
         self.curr_val_epoch=0
-        self.curr_val_step=0
+        self.curr_val_step=last_val_step
         self.curr_eval_freq = eval_freq
         self.eval_freq_factor = eval_freq_factor
         self.last_val_acc = 0.0
+
+        self.val_accs = []
+        self.val_steps = []
+        self.has_converged = False
 
         self.save_hyperparameters()
 
@@ -118,22 +122,18 @@ class FFNetwork(pl.LightningModule):
             self.log('val_loss', loss) #, on_step=True, on_epoch=False, prog_bar=True, logger=True)
             target = to_categorical(y, argmax_dim=1)
             
-            val_acc, val_ap, val_auroc_, val_cf_mat, val_roc_curve = self.evaluate_metrics(o, 
+            val_acc, _, _, val_cf_mat, val_roc_curve = self.evaluate_metrics(o, 
                                                                 target, num_classes, compute_cf_mat=False,
                                                                 cm_figure=False, roc_figure=False)
             
+            self.val_accs.append(val_acc)
             self.log('val_acc', val_acc) #, on_step=True, on_epoch=False, prog_bar=True, logger=True)
             #self.log('val_ap', val_ap, on_step=False, on_epoch=True, prog_bar=True, logger=True)
             #self.log('val_auroc', val_auroc_, on_step=False, on_epoch=True, prog_bar=False, logger=True)
-            self.curr_val_epoch = self.trainer.current_epoch
-            self.curr_val_step = self.trainer.global_step
-            if self.hparams.b_len > 0 and (not self.hparams.no_reshuffle):
-                self.curr_val_epoch -= self.last_val_epoch
-                self.curr_val_step -= self.last_val_step
-                self.last_val_step = self.trainer.global_step
-                self.last_val_epoch = self.trainer.current_epoch
-                assert(self.curr_val_epoch >= 0 and self.curr_val_step >= 0)
+            if self.trainer.global_step > 0:
+                self.set_curr_steps_epochs()
             self.log('val_epoch', float(self.curr_val_epoch)) #, on_step=True, on_epoch=False, prog_bar=False, logger=True)
+            self.val_steps.append(float(self.curr_val_step))
             self.log('val_step', float(self.curr_val_step))
             self.trainer.logger.save() # flushes to logger
 
@@ -147,21 +147,8 @@ class FFNetwork(pl.LightningModule):
                 if self.hparams.mode == 'um' and self.hparams.b_len > 0: # should be checked in argparse assert
                     #print(f'UM RESET at epoch: {self.trainer.current_epoch}')
                     if self.trainer.current_epoch > 0:
-                        if abs(self.last_val_acc - val_acc) < 0.05: self.eval_freq_factor *= 1.15
-                        elif abs(self.last_val_acc - val_acc) > 0.175: self.eval_freq_factor *= 0.85
-                        if self.last_val_acc < 0.85: # stop exp growth at val_acc == 0.85
-                            self.curr_eval_freq *= self.eval_freq_factor
-                        else:
-                            self.curr_eval_freq *= 0.8
-                        self.curr_eval_freq = int(((self.curr_eval_freq // self.hparams.b_len)+1) * self.hparams.b_len) # multiple of b_len
-                        if self.curr_eval_freq > 20000:
-                            self.eval_freq_factor = 1.2
-                            if self.curr_eval_freq > 25000: # upper threshold for eval_freq, otherwise will never be reached and timeout
-                                self.curr_eval_freq = 25000
-                        if self.curr_eval_freq < self.hparams.b_len:
-                            self.curr_eval_freq = self.hparams.b_len
-                            self.eval_freq_factor = 2.2
-                        
+                        self.adjust_eval_freq(val_acc)
+                    
                     until_idx += self.curr_eval_freq
                     print(f'Chain shuffled until: {until_idx}, curr_eval_freq: {self.curr_eval_freq}')
                     self.reset_network_sampler(until_idx=until_idx)
@@ -206,3 +193,30 @@ class FFNetwork(pl.LightningModule):
             if hasattr(layer, 'reset_parameters'):
                 #print(f"resetting layer: {layer}")
                 layer.reset_parameters()
+
+    def adjust_eval_freq(self, val_acc):
+        if abs(self.last_val_acc - val_acc) < 0.05: self.eval_freq_factor *= 1.15
+        elif abs(self.last_val_acc - val_acc) > 0.175: self.eval_freq_factor *= 0.85
+        if self.last_val_acc < 0.85: # stop exp growth at val_acc == 0.85
+            self.curr_eval_freq *= self.eval_freq_factor
+        else:
+            self.curr_eval_freq *= 0.7
+            self.eval_freq_factor = 1.2
+        self.curr_eval_freq = int(((self.curr_eval_freq // self.hparams.b_len)+1) * self.hparams.b_len) # multiple of b_len
+        if self.curr_eval_freq > 20000:
+            self.eval_freq_factor = 1.2
+            if self.curr_eval_freq > 25000: # upper threshold for eval_freq, otherwise will never be reached and timeout
+                self.curr_eval_freq = 25000
+        if self.curr_eval_freq < self.hparams.b_len:
+            self.curr_eval_freq = self.hparams.b_len
+            self.eval_freq_factor = 2.2
+
+    def set_curr_steps_epochs(self):
+        self.curr_val_epoch = self.trainer.current_epoch
+        self.curr_val_step = self.trainer.global_step
+        if self.hparams.b_len > 0 and (not self.hparams.no_reshuffle):
+            self.curr_val_epoch -= self.last_val_epoch
+            self.curr_val_step -= self.last_val_step
+            self.last_val_step = self.trainer.global_step
+            self.last_val_epoch = self.trainer.current_epoch
+            assert(self.curr_val_epoch >= 0 and self.curr_val_step >= 0)

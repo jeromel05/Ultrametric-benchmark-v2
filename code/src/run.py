@@ -64,8 +64,8 @@ def run():
     parser.add_argument('--show_progbar', action='store_true', help="define level of verbosity")
     parser.add_argument('--no_reshuffle', action='store_true', help="true means eval only at one point")
     parser.add_argument('--save_ckpt', action='store_true', default=False, help="define level of verbosity")
+    parser.add_argument('--last_val_step', type=int, default=0, help="define level of verbosity")
 
-    
 
     args = parser.parse_args()
     print("All args: ", args)
@@ -78,7 +78,7 @@ def run():
         eval_freq = (args.eval_freq // args.b_len) * args.b_len # ensure eval_freq is a multiple of b_len
     else: 
         eval_freq = args.eval_freq 
-    assert(eval_freq > 0)
+    assert(eval_freq > 0 and eval_freq >= args.b_len)
     print(f'Start eval_freq: {eval_freq}')
 
     # training
@@ -93,7 +93,8 @@ def run():
 
         model = FFNetwork(input_size=args.input_size, hidden_size=args.hidden_size, nb_classes=nb_classes, 
                         mode=args.mode, optimizer=args.optimizer, lr=args.lr, lr_scheduler=args.lr_scheduler,
-                        b_len=args.b_len, eval_freq=eval_freq, eval_freq_factor=args.eval_freq_factor, no_reshuffle=args.no_reshuffle)
+                        b_len=args.b_len, eval_freq=eval_freq, eval_freq_factor=args.eval_freq_factor, no_reshuffle=args.no_reshuffle,
+                        last_val_step=args.last_val_step)
         
         logger = TensorBoardLogger(logs_path, name=f"metrics", version=f"fold_{seed}")
         if args.mode == 'um':
@@ -174,8 +175,8 @@ def def_callbacks(args, checkpoint_path, seed):
         callbacks.append(checkpoint_callback)
 
     if args.early_stop:
-        patience = 4 if args.b_len > 0 else 50
-        stopping_threshold = 0.95 if args.b_len > 0 else 1.0
+        patience = 4 #if args.b_len > 0 else 5
+        stopping_threshold = 0.95 if args.b_len > 0 else 0.997
         callbacks.append(
             Custom_EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=True, 
                         mode="max", stopping_threshold=stopping_threshold, patience=patience, strict=True))

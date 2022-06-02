@@ -31,6 +31,3 @@ class LitProgressBar(ProgressBarBase):
         items = super().get_metrics(trainer, model)
         items.pop("v_num", None)
         return items
-
-    
-            

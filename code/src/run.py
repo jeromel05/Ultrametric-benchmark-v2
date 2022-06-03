@@ -175,8 +175,8 @@ def def_callbacks(args, checkpoint_path, seed):
         callbacks.append(checkpoint_callback)
 
     if args.early_stop:
-        patience = 4 #if args.b_len > 0 else 5
-        stopping_threshold = 0.95 if args.b_len > 0 else 0.997
+        patience = 10 if args.b_len > 0 else 100
+        stopping_threshold = 0.98 if args.b_len > 0 else 0.997
         callbacks.append(
             Custom_EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=True, 
                         mode="max", stopping_threshold=stopping_threshold, patience=patience, strict=True))

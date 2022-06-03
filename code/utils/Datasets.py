@@ -165,6 +165,7 @@ class UltraMetricSampler(torch.utils.data.Sampler):
     def reset_sampler(self, until_idx=None):
         assert(self.b_len > 0)
         self.temp_shuff_chain = self.chain.copy()
+        print('SHUFFLING UNTIL: ', until_idx)
         if not until_idx == None:
             self.temp_shuff_chain[:until_idx] = shuffle_blocks_v2(self.chain[:until_idx], self.b_len)
         else:
@@ -172,33 +173,25 @@ class UltraMetricSampler(torch.utils.data.Sampler):
         self.total_length = 0
 
 class BinarySampler(torch.utils.data.Sampler):
-    def __init__(self, data_source, class_index, chain, train=True):
+    def __init__(self, data_source, class_index, train=True, nb_samples_per_block=1000):
         self.data_source = data_source
         self.class_index = class_index
-        self.chain = chain
-        self.train = train
+        self.nb_samples_per_block = nb_samples_per_block
         self.curr_epoch_nb = 0
+        self.train=train
 
     def __iter__(self):
-        classes_to_sample = self.chain[self.curr_epoch_nb:self.curr_epoch_nb+2]
+        classes_to_sample = np.random.randint(0, high=9, size=2)
         indexes = np.concatenate((self.class_index[classes_to_sample[0]], self.class_index[classes_to_sample[1]]))
         if self.train:
-            np.random.shuffle(indexes)
-        print("classes: ", classes_to_sample, self.train, self.curr_epoch_nb)
-        
+            indexes=np.random.choice(indexes, size=self.nb_samples_per_block)
+
+        print("classes: ", classes_to_sample)
         return iter(indexes)
 
     def __len__(self):
-        classes_to_sample = self.chain[self.curr_epoch_nb:self.curr_epoch_nb+2]
-        indexes = np.concatenate((self.class_index[classes_to_sample[0]], self.class_index[classes_to_sample[1]]))
-        return len(indexes)
+        return self.nb_samples_per_block
     
-    def update_curr_epoch_nb(self):
-        self.curr_epoch_nb = self.curr_epoch_nb + 2
-        
-    def get_curr_epoch_nb(self):
-        return self.curr_epoch_nb
-
 
 class UMDataModule(pl.LightningDataModule):
     def __init__(self, max_depth: int, data_dir: str = "./", batch_size_train: int=128, batch_size_test: int=1000, 
@@ -277,10 +270,8 @@ class MnistDataModule(pl.LightningDataModule):
                 self.test_ds = MnistLinearDataset(filtered_test_df, transform=None)
                 
             elif self.mode == 'split':
-                split_chain = np.random.randint(0, high=self.nb_classes, size=1000)
-                self.train_sampler = BinarySampler(self.um_train_ds, train_class_index, split_chain, train=True)
+                self.train_sampler = BinarySampler(self.um_train_ds, train_class_index, train=True)
                 self.test_ds = UltrametricMnistDataset(filtered_test_df, transform=None)
-                self.test_sampler = BinarySampler(self.test_ds, test_class_index, split_chain, train=False)
         
         self.predict_ds = MnistPredictDataset(filtered_test_df, transform=None)
 
@@ -330,9 +321,7 @@ class SynthDataModule(UMDataModule):
                                                     self.nb_classes, self.b_len)
 
         elif self.mode == 'split':
-            split_chain = np.random.randint(0, high=self.nb_classes, size=20000)
-            self.train_sampler = BinarySampler(self.um_train_ds, train_class_index, split_chain, train=True)
-            self.test_sampler = BinarySampler(self.test_ds, test_class_index, split_chain, train=False)
+            self.train_sampler = BinarySampler(self.um_train_ds, train_class_index, train=True)
 
         self.predict_ds = SynthPredictDataset(X_test)
 

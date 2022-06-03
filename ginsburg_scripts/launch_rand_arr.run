@@ -1,0 +1,24 @@
+#!/bin/sh
+
+#SBATCH --account=theory
+#SBATCH --job-name=launch_arr
+#SBATCH -c 1
+#SBATCH --time=00:5:00
+#SBATCH --error="/burg/home/jl6181/home/scratch/stderr/%j_err.out"
+#SBATCH --output="/burg/home/jl6181/home/scratch/%j.out"
+
+echo "JOB_ID" 
+echo $SLURM_JOB_ID
+
+for h_size in $1
+do
+    for tree_depth in $2
+    do
+        for lear_r in $3
+        do
+            echo "RUNNING HID_SIZE $h_size TREE_DEPTH $tree_depth LR $lear_r"
+            sbatch rand_arr.run "$h_size" "$tree_depth" "$lear_r"
+        done
+    done
+done
+

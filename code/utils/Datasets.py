@@ -124,7 +124,6 @@ class SynthPredictDataset(Dataset):
             idx = idx.tolist()
 
         sample = self.data[idx]
-        
         if self.transform:
             sample = self.transform(sample)
 
@@ -132,7 +131,7 @@ class SynthPredictDataset(Dataset):
     
 
 class UltraMetricSampler(torch.utils.data.Sampler):
-    def __init__(self, data_source, chain, class_index, nb_classes, b_len=0):
+    def __init__(self, data_source, chain, class_index, nb_classes, batch_size_train, b_len=0):
         self.data_source = data_source
         self.chain = chain
         self.temp_shuff_chain = chain.copy()
@@ -140,6 +139,7 @@ class UltraMetricSampler(torch.utils.data.Sampler):
         self.nb_classes = nb_classes
         self.total_length = 0
         self.b_len = b_len
+        self.batch_size_train = batch_size_train
         self.um_indexes = []
 
     def __iter__(self):
@@ -154,6 +154,9 @@ class UltraMetricSampler(torch.utils.data.Sampler):
             um_class = self.temp_shuff_chain[idx]
             nb_previous_occurences[um_class] += 1
             idx += 1
+
+        to_remove = len(um_indexes) % self.batch_size_train
+        if to_remove > 0: um_indexes = um_indexes[:-to_remove]
 
         self.total_length += len(um_indexes)
         self.um_indexes = um_indexes
@@ -173,20 +176,23 @@ class UltraMetricSampler(torch.utils.data.Sampler):
         self.total_length = 0
 
 class BinarySampler(torch.utils.data.Sampler):
-    def __init__(self, data_source, class_index, train=True, nb_samples_per_block=1000):
+    def __init__(self, data_source, class_index, nb_classes, train=True, nb_samples_per_block=1000):
         self.data_source = data_source
         self.class_index = class_index
         self.nb_samples_per_block = nb_samples_per_block
         self.curr_epoch_nb = 0
         self.train=train
+        self.um_indexes = []
+        self.nb_classes = nb_classes
 
     def __iter__(self):
-        classes_to_sample = np.random.randint(0, high=9, size=2)
-        indexes = np.concatenate((self.class_index[classes_to_sample[0]], self.class_index[classes_to_sample[1]]))
+        class_to_sample = (np.random.randint(0, high=self.nb_classes-1) // 2) * 2
+        indexes = np.concatenate((self.class_index[class_to_sample], self.class_index[class_to_sample+1]))
         if self.train:
             indexes=np.random.choice(indexes, size=self.nb_samples_per_block)
 
-        print("classes: ", classes_to_sample)
+        self.um_indexes = indexes
+        print(f"classes: ({class_to_sample}, {class_to_sample+1})")
         return iter(indexes)
 
     def __len__(self):
@@ -266,11 +272,11 @@ class MnistDataModule(pl.LightningDataModule):
 
             if self.mode == 'um':
                 self.train_sampler = UltraMetricSampler(self.um_train_ds, self.markov_chain, train_class_index, 
-                                                        self.nb_classes, b_len=self.b_len) # B_len is missing!!!
+                                                        self.nb_classes, batch_size_train=self.batch_size_train, b_len=self.b_len) # B_len is missing!!!
                 self.test_ds = MnistLinearDataset(filtered_test_df, transform=None)
                 
             elif self.mode == 'split':
-                self.train_sampler = BinarySampler(self.um_train_ds, train_class_index, train=True)
+                self.train_sampler = BinarySampler(self.um_train_ds, train_class_index, nb_classes=self.nb_classes, train=True)
                 self.test_ds = UltrametricMnistDataset(filtered_test_df, transform=None)
         
         self.predict_ds = MnistPredictDataset(filtered_test_df, transform=None)
@@ -318,10 +324,10 @@ class SynthDataModule(UMDataModule):
         if self.mode == 'um':
             assert(len(set(self.markov_chain)) == self.tree.nb_classes) #assert all classes are represented in the Markov chain
             self.train_sampler = UltraMetricSampler(self.um_train_ds, self.markov_chain, train_class_index, 
-                                                    self.nb_classes, self.b_len)
+                                                    self.nb_classes, batch_size_train=self.batch_size_train, b_len=self.b_len)
 
         elif self.mode == 'split':
-            self.train_sampler = BinarySampler(self.um_train_ds, train_class_index, train=True)
+            self.train_sampler = BinarySampler(self.um_train_ds, train_class_index, nb_classes=self.nb_classes, train=True)
 
         self.predict_ds = SynthPredictDataset(X_test)
 

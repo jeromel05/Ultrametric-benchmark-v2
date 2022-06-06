@@ -97,7 +97,7 @@ def run():
                         last_val_step=args.last_val_step)
         
         logger = TensorBoardLogger(logs_path, name=f"metrics", version=f"fold_{seed}")
-        if args.mode == 'um':
+        if args.mode in ['um', 'split']:
             data_module.set_markov_chain(args, seed)
             val_check_interval=1
         elif args.mode == 'rand':

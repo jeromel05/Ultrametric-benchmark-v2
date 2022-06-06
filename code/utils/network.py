@@ -83,7 +83,7 @@ class FFNetwork(pl.LightningModule):
   
     def training_step(self, train_batch, batch_idx):
         x, y = train_batch
-        #print('train:', self.trainer.current_epoch, x.size(0))
+        #print('train:', self.trainer.current_epoch, x.size(), y.size())
         num_classes = y.size(1)
         x = x.view(x.size(0), -1)
         o = self.forward(x)
@@ -91,6 +91,7 @@ class FFNetwork(pl.LightningModule):
         self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=False, logger=True)
 
         target = to_categorical(y, argmax_dim=1)
+        #print('targets: ', target)
         train_acc = accuracy(o, target, average='micro', num_classes=num_classes)
         self.log('train_acc', train_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         
@@ -99,7 +100,7 @@ class FFNetwork(pl.LightningModule):
         cond_last_batch = batch_idx == last_batch_idx
         cond_epoch_zero = (self.trainer.current_epoch==0 and batch_idx==0)
         #print(batch_idx, end=" ")
-        if (((not self.hparams.mode == 'um') or (self.hparams.b_len == 0 and self.trainer.current_epoch % 5==0) or self.hparams.no_reshuffle) and cond_last_batch) or cond_epoch_zero:
+        if (((self.hparams.mode == 'rand') or (self.hparams.b_len == 0 and self.trainer.current_epoch % 5==0) or self.hparams.no_reshuffle) and cond_last_batch) or cond_epoch_zero:
             #print('batch_idx', batch_idx, last_batch_idx, len(y), list(set(target)), "aaa", target)
             self.run_val=True
         else:
@@ -174,11 +175,6 @@ class FFNetwork(pl.LightningModule):
         self.log('test_auroc', test_auroc_, on_step=False, on_epoch=True, prog_bar=False, logger=True)
         #print_metrics(test_acc, test_ap, test_auroc_, test_cf_mat, test_roc_curve, save_figs = (num_classes <= 16))
         
-    def validation_epoch_end(self, outputs):
-        if self.hparams.mode == 'split':
-            self.trainer.datamodule.train_dataloader().sampler.update_curr_epoch_nb()
-            self.trainer.datamodule.val_dataloader().sampler.update_curr_epoch_nb()
-        
     def log_figures(self, num_classes, val_cf_mat, val_roc_curve):
         tensorboard = self.logger.experiment
         if num_classes > 16:
@@ -200,7 +196,7 @@ class FFNetwork(pl.LightningModule):
         if self.last_val_acc < 0.80: # stop exp growth at val_acc == 0.80
             self.curr_eval_freq *= self.eval_freq_factor
         else:
-            self.curr_eval_freq = min(self.curr_eval_freq*0.5, 8*self.hparams.b_len)
+            self.curr_eval_freq = max(min(self.curr_eval_freq*0.5, 8*self.hparams.b_len), 4*self.hparams.b_len)
             self.eval_freq_factor = 1.1
         self.curr_eval_freq = int(((self.curr_eval_freq // self.hparams.b_len)+1) * self.hparams.b_len) # multiple of b_len
         if self.curr_eval_freq > 20000:

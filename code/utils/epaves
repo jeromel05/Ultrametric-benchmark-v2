@@ -1,32 +1,22 @@
-classes_test = np.random.randint(0, high=self.nb_classes, size=round(self.test_split*self.nb_classes))
-classes_train = np.setdiff1d(self.classes, classes_test)
-train_idx = [i for i, el in enumerate(y) if el in classes_train]
-test_idx = [i for i, el in enumerate(y) if el in classes_test]
+um_indexes = []
+        temp_shuff_class_index = self.class_index.copy()
+        nb_previous_occurences = np.zeros(self.nb_classes, dtype=np.int32)
+        temp_shuff_class_index = [np.shuffle(el) for el in temp_shuff_class_index] # shuffle list of indexes
 
-X_train, y_train, X_test, y_test = X[train_idx], y[train_idx], X[test_idx], y[test_idx]
-X_train = torch.tensor(X_train, dtype=torch.float)
-X_test = torch.tensor(X_test, dtype=torch.float)
-y_train = torch.tensor(y_train, dtype=torch.long)
-y_test = torch.tensor(y_test, dtype=torch.long)
+        while True:
+            class_to_sample = (np.random.randint(0, high=self.nb_classes-1) // 2) * 2 # select classes
+            remaining_class1 = self.temp_shuff_class_index[class_to_sample][nb_previous_occurences[class_to_sample]:]
+            remaining_class2 = self.temp_shuff_class_index[class_to_sample+1][nb_previous_occurences[class_to_sample+1]:]
 
-def training_epoch_end(self, outputs):
-        if self.hparams.mode == 'vvvv': # not used
-            #val_batch=next(iter(self.trainer.datamodule.val_dataloader()))
-            #batch_idx=self.trainer.current_epoch
-            print('launch val step manually')
-            self.trainer.validate(model=self, dataloaders=self.trainer.datamodule.val_dataloader())
+            if len(remaining_class1) < self.nb_samples_per_block or len(remaining_class2) < self.nb_samples_per_block:
+                break # got to new epoch
+            idx_on_all = np.random.randint(0, high=2, size=self.nb_samples_per_block)
+            curr_split_indexes = [remaining_class1[i] if idx > 0 else remaining_class2[i] for i, idx in enumerate(idx_on_all)]
 
-        if self.hparams.mode == 'bbbbb': # not used
-            val_batch=next(iter(self.trainer.datamodule.val_dataloader()))
-            batch_idx=self.trainer.current_epoch
-            print('launch val step manually')
-            self.validation_step(val_batch=val_batch, batch_idx=batch_idx)
-    
-    #def on_train_start(self) -> None:
-        #print("222222")
-        #self.trainer.datamodule.train_dataloader().sampler.reset_lengths()
+            nb_previous_occurences[class_to_sample] += curr_split_indexes.count(class_to_sample)
+            nb_previous_occurences[class_to_sample+1] += curr_split_indexes.count(class_to_sample+1)
+            um_indexes.append(curr_split_indexes)
 
-replace_idx = np.where(self.hparams.eval_steps == self.trainer.current_epoch)[0][-1]
-self.hparams.eval_steps = self.hparams.eval_steps[replace_idx+1:]
-self.hparams.eval_steps[0] = int(self.hparams.eval_steps[0] + self.trainer.current_epoch)
-if self.hparams.eval_steps[0] == 1: self.hparams.eval_steps = self.hparams.eval_steps[1:]
+        self.um_indexes = um_indexes
+        print(f"classes: ({class_to_sample}, {class_to_sample+1}), {len(um_indexes)}, {um_indexes[:30]}")
+        return iter(um_indexes)

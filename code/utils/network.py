@@ -7,7 +7,7 @@ from torch import nn
 from torch.nn import functional as F
 from torchmetrics.functional import accuracy, average_precision, auroc, roc, confusion_matrix
 from torchmetrics.utilities.data import to_categorical
-from util_functions import make_confusion_matrix_figure, make_roc_curves_figure, print_metrics
+from util_functions import make_confusion_matrix_figure, make_roc_curves_figure
 
 class FFNetwork(pl.LightningModule):
     def __init__(self, input_size, hidden_size, nb_classes, mode, optimizer, lr, lr_scheduler, 
@@ -49,8 +49,6 @@ class FFNetwork(pl.LightningModule):
             optimizer = torch.optim.SGD(self.parameters(), lr=self.hparams.lr, momentum=0.2)
         
         if self.hparams.lr_scheduler == "reduce_lr":
-            #factor = self.hparams.lr_factor
-            #patience = self.hparams.lr_patience
             scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
                 optimizer, mode="min", factor=0.5, patience=100, min_lr=1e-3)
             config_dict = {"optimizer": optimizer, "lr_scheduler": scheduler, "monitor": "train_loss_step"}
@@ -96,10 +94,15 @@ class FFNetwork(pl.LightningModule):
         self.log('train_acc', train_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         
         self.run_val=False
-        last_batch_idx = len(self.trainer.datamodule.train_dataloader().sampler.um_indexes) // self.trainer.datamodule.batch_size_train
+        if self.hparams.mode == 'rand': 
+            length_epoch=len(self.trainer.datamodule.train_dataloader())
+        else:
+            length_epoch=len(self.trainer.datamodule.train_dataloader().sampler.um_indexes)
+
+        last_batch_idx = length_epoch // self.trainer.datamodule.batch_size_train
         cond_last_batch = batch_idx == last_batch_idx
         cond_epoch_zero = (self.trainer.current_epoch==0 and batch_idx==0)
-        #print(batch_idx, end=" ")
+
         if (((self.hparams.mode == 'rand') or (self.hparams.b_len == 0 and self.trainer.current_epoch % 5==0) or self.hparams.no_reshuffle) and cond_last_batch) or cond_epoch_zero:
             #print('batch_idx', batch_idx, last_batch_idx, len(y), list(set(target)), "aaa", target)
             self.run_val=True
@@ -120,7 +123,7 @@ class FFNetwork(pl.LightningModule):
             x = x.view(x.size(0), -1)
             o = self.forward(x)
             loss = F.binary_cross_entropy(o, y)
-            self.log('val_loss', loss) #, on_step=True, on_epoch=False, prog_bar=True, logger=True)
+            self.log('val_loss', loss)
             target = to_categorical(y, argmax_dim=1)
             
             val_acc, _, _, val_cf_mat, val_roc_curve = self.evaluate_metrics(o, 
@@ -128,12 +131,12 @@ class FFNetwork(pl.LightningModule):
                                                                 cm_figure=False, roc_figure=False)
             
             self.val_accs.append(val_acc)
-            self.log('val_acc', val_acc) #, on_step=True, on_epoch=False, prog_bar=True, logger=True)
-            #self.log('val_ap', val_ap, on_step=False, on_epoch=True, prog_bar=True, logger=True)
-            #self.log('val_auroc', val_auroc_, on_step=False, on_epoch=True, prog_bar=False, logger=True)
+            self.log('val_acc', val_acc)
+            #self.log('val_ap', val_ap)
+            #self.log('val_auroc', val_auroc)
             if self.trainer.global_step > 0:
                 self.set_curr_steps_epochs()
-            self.log('val_epoch', float(self.curr_val_epoch)) #, on_step=True, on_epoch=False, prog_bar=False, logger=True)
+            self.log('val_epoch', float(self.curr_val_epoch))
             self.val_steps.append(float(self.curr_val_step))
             self.log('val_step', float(self.curr_val_step))
             self.trainer.logger.save() # flushes to logger
@@ -145,8 +148,8 @@ class FFNetwork(pl.LightningModule):
 
             if not self.hparams.no_reshuffle: 
                 until_idx=self.curr_val_step
-                if self.hparams.mode == 'um' and self.hparams.b_len > 0: # should be checked in argparse assert
-                    #print(f'UM RESET at epoch: {self.trainer.current_epoch}')
+                if self.hparams.mode == 'um' and self.hparams.b_len > 0:
+
                     if self.trainer.current_epoch > 0:
                         self.adjust_eval_freq(val_acc)
                     
@@ -173,7 +176,6 @@ class FFNetwork(pl.LightningModule):
         self.log('test_acc', test_acc, on_step=False, on_epoch=True, prog_bar=False, logger=True)
         self.log('test_ap', test_ap, on_step=False, on_epoch=True, prog_bar=False, logger=True)
         self.log('test_auroc', test_auroc_, on_step=False, on_epoch=True, prog_bar=False, logger=True)
-        #print_metrics(test_acc, test_ap, test_auroc_, test_cf_mat, test_roc_curve, save_figs = (num_classes <= 16))
         
     def log_figures(self, num_classes, val_cf_mat, val_roc_curve):
         tensorboard = self.logger.experiment
@@ -187,7 +189,6 @@ class FFNetwork(pl.LightningModule):
         self.trainer.datamodule.train_dataloader().sampler.reset_sampler(until_idx)
         for layer in self.children():
             if hasattr(layer, 'reset_parameters'):
-                #print(f"resetting layer: {layer}")
                 layer.reset_parameters()
 
     def adjust_eval_freq(self, val_acc):

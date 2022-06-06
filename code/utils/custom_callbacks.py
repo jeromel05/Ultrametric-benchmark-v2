@@ -164,7 +164,6 @@ class Custom_EarlyStopping(Callback):
         }
 
 
-
     def load_state_dict(self, state_dict: Dict[str, Any]) -> None:
         self.wait_count = state_dict["wait_count"]
         self.stopped_epoch = state_dict["stopped_epoch"]

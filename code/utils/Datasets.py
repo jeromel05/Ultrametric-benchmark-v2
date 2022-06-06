@@ -127,8 +127,7 @@ class SynthPredictDataset(Dataset):
         if self.transform:
             sample = self.transform(sample)
 
-        return sample
-    
+        return sample 
 
 class UltraMetricSampler(torch.utils.data.Sampler):
     def __init__(self, data_source, chain, class_index, nb_classes, batch_size_train, b_len=0):
@@ -164,7 +163,7 @@ class UltraMetricSampler(torch.utils.data.Sampler):
 
     def __len__(self):
         return len(self.data_source)
-    
+
     def reset_sampler(self, until_idx=None):
         assert(self.b_len > 0)
         self.temp_shuff_chain = self.chain.copy()
@@ -176,27 +175,46 @@ class UltraMetricSampler(torch.utils.data.Sampler):
         self.total_length = 0
 
 class BinarySampler(torch.utils.data.Sampler):
-    def __init__(self, data_source, class_index, nb_classes, train=True, nb_samples_per_block=1000):
-        self.data_source = data_source
+    def __init__(self, class_index, nb_classes, b_len, nb_samples_per_block=1000):
         self.class_index = class_index
         self.nb_samples_per_block = nb_samples_per_block
-        self.curr_epoch_nb = 0
-        self.train=train
         self.um_indexes = []
         self.nb_classes = nb_classes
+        self.b_len = b_len
+        self.shuffle_until = 0
 
     def __iter__(self):
-        class_to_sample = (np.random.randint(0, high=self.nb_classes-1) // 2) * 2
-        indexes = np.concatenate((self.class_index[class_to_sample], self.class_index[class_to_sample+1]))
-        if self.train:
-            indexes=np.random.choice(indexes, size=self.nb_samples_per_block)
+        um_indexes = []
+        temp_shuff_class_index = self.class_index.copy()
+        nb_previous_occurences = np.zeros(self.nb_classes, dtype=np.int32)
+        temp_shuff_class_index = [np.shuffle(el) for el in temp_shuff_class_index] # shuffle list of indexes
 
-        self.um_indexes = indexes
-        print(f"classes: ({class_to_sample}, {class_to_sample+1})")
-        return iter(indexes)
+        while True:
+            class_to_sample = (np.random.randint(0, high=self.nb_classes-1) // 2) * 2 # select classes
+            remaining_class1 = self.temp_shuff_class_index[class_to_sample][nb_previous_occurences[class_to_sample]:]
+            remaining_class2 = self.temp_shuff_class_index[class_to_sample+1][nb_previous_occurences[class_to_sample+1]:]
+
+            if len(remaining_class1) < self.nb_samples_per_block or len(remaining_class2) < self.nb_samples_per_block:
+                break # got to new epoch
+            idx_on_all = np.random.randint(0, high=2, size=self.nb_samples_per_block)
+            curr_split_indexes = [remaining_class1[i] if idx > 0 else remaining_class2[i] for i, idx in enumerate(idx_on_all)]
+
+            nb_previous_occurences[class_to_sample] += curr_split_indexes.count(class_to_sample)
+            nb_previous_occurences[class_to_sample+1] += curr_split_indexes.count(class_to_sample+1)
+            um_indexes.append(curr_split_indexes)
+
+        self.um_indexes = um_indexes
+        print(f"classes: ({class_to_sample}, {class_to_sample+1}), {len(um_indexes)}, {um_indexes[:30]}")
+        return iter(um_indexes)
 
     def __len__(self):
         return self.nb_samples_per_block
+
+    def reset_sampler(self, until_idx):
+        assert(self.b_len > 0)
+        print('SHUFFLING UNTIL: ', until_idx)
+        self.shuffle_until = until_idx
+        
     
 
 class UMDataModule(pl.LightningDataModule):
@@ -238,6 +256,7 @@ class UMDataModule(pl.LightningDataModule):
             self.markov_chain = np.load(path_to_data).tolist()
 
         if self.no_reshuffle: # if we shuffle just once
+            print('NO RESHUFFLE')
             self.markov_chain[:10000] = shuffle_blocks_v2(self.markov_chain[:10000], self.b_len)
 
                              
@@ -261,7 +280,7 @@ class MnistDataModule(pl.LightningDataModule):
             return filtered_df, class_index
 
         filtered_train_df, train_class_index = prepare_data(train_ds)
-        filtered_test_df, test_class_index = prepare_data(test_ds)
+        filtered_test_df, _ = prepare_data(test_ds)
         
         if self.mode == 'rand':
             self.um_train_ds=MnistLinearDataset(filtered_train_df, transform=None)            
@@ -272,11 +291,11 @@ class MnistDataModule(pl.LightningDataModule):
 
             if self.mode == 'um':
                 self.train_sampler = UltraMetricSampler(self.um_train_ds, self.markov_chain, train_class_index, 
-                                                        self.nb_classes, batch_size_train=self.batch_size_train, b_len=self.b_len) # B_len is missing!!!
+                                                        self.nb_classes, batch_size_train=self.batch_size_train, b_len=self.b_len)
                 self.test_ds = MnistLinearDataset(filtered_test_df, transform=None)
                 
             elif self.mode == 'split':
-                self.train_sampler = BinarySampler(self.um_train_ds, train_class_index, nb_classes=self.nb_classes, train=True)
+                self.train_sampler = BinarySampler(self.um_train_ds, train_class_index, b_len=self.b_len, nb_classes=self.nb_classes)
                 self.test_ds = UltrametricMnistDataset(filtered_test_df, transform=None)
         
         self.predict_ds = MnistPredictDataset(filtered_test_df, transform=None)
@@ -316,7 +335,7 @@ class SynthDataModule(UMDataModule):
             return y, class_index
 
         y_train, train_class_index = prepare_target_data(y_train)
-        y_test, test_class_index = prepare_target_data(y_test)
+        y_test, _ = prepare_target_data(y_test)
     
         self.um_train_ds=TensorDataset(X_train, y_train)
         self.test_ds=TensorDataset(X_test, y_test)
@@ -327,7 +346,7 @@ class SynthDataModule(UMDataModule):
                                                     self.nb_classes, batch_size_train=self.batch_size_train, b_len=self.b_len)
 
         elif self.mode == 'split':
-            self.train_sampler = BinarySampler(self.um_train_ds, train_class_index, nb_classes=self.nb_classes, train=True)
+            self.train_sampler = BinarySampler(self.um_train_ds, train_class_index, b_len=self.b_len, nb_classes=self.nb_classes)
 
         self.predict_ds = SynthPredictDataset(X_test)
 

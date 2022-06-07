@@ -50,7 +50,6 @@ def run():
     parser.add_argument('--num_workers', type=int, default=4, help="define level of verbosity")
     parser.add_argument('--b_len', type=int, default=0, help="if b_len > 0 -> do shuffles")
     parser.add_argument('--normalize_data', action='store_true', help="define level of verbosity")
-    parser.add_argument('--repeat_data', type=int, default=1, help="define level of verbosity")
     parser.add_argument('--test_split', type=float, default=0.2, help="define level of verbosity")
     parser.add_argument('--optimizer', type=str, default="sgd", choices=['sgd', 'adam'], help="define datset to use")
     parser.add_argument('--metric', type=str, default="val_loss", choices=['val_acc', 'val_loss', 'train_acc'], help="define datset to use")
@@ -109,12 +108,10 @@ def run():
         trainer = pl.Trainer(default_root_dir=logs_path, gpus=args.gpu, 
                             num_nodes=1, precision=32, logger=logger, max_epochs=args.max_epochs,
                             callbacks=callbacks,
-                            #log_every_n_steps=1, 
                             check_val_every_n_epoch=1, 
                             val_check_interval=val_check_interval,
                             enable_checkpointing=args.save_ckpt)
-                            #num_sanity_val_steps=0)
-                            #, fast_dev_run=4)
+                            #fast_dev_run=4)
         
         if args.auto_lr_find:
             print("Fitting lr...")
@@ -151,7 +148,7 @@ def create_data_modules(args, dataset_name: str):
                                         num_workers=args.num_workers, max_depth=args.max_tree_depth, 
                                         noise_level=args.noise_level, p_flip=args.p_flip, p_noise=args.p_noise, 
                                         leaf_length=args.input_size, normalize_data=args.normalize_data, 
-                                        repeat_data=args.repeat_data, test_split=args.test_split, b_len=args.b_len,
+                                        test_split=args.test_split, b_len=args.b_len,
                                         no_reshuffle=args.no_reshuffle)
         return data_module
 

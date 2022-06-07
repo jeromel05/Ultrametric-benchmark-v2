@@ -43,36 +43,6 @@ class MnistLinearDataset(Dataset):
             sample_img = self.transform(sample_img)
 
         return [sample_img, sample_label]
-    
-
-class UltrametricMnistDataset(Dataset):
-    """Ultrametric dataset"""
-    
-    def __init__(self, data_df, transform=None):
-        """
-        Args:
-            data_df (DataFrame): Path to the csv file with annotations.
-            transform (callable, optional): Optional transform to be applied
-                on a sample.
-        """
-        self.images = data_df["img"].values
-        self.labels = data_df["label"].values
-        self.transform = transform
-        
-    def __len__(self):
-        return len(self.images)
-
-    def __getitem__(self, idx):
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
-        
-        sample_img = self.images[idx][0].reshape(28*28)
-        sample_label = torch.Tensor(self.labels[idx][0])
-        
-        if self.transform:
-            sample_img = self.transform(sample_img)
-        
-        return [sample_img, sample_label]
 
 
 class MnistPredictDataset(Dataset):
@@ -252,7 +222,7 @@ class UMDataModule(pl.LightningDataModule):
         self.markov_chain = split_chain
 
                              
-class MnistDataModule(pl.LightningDataModule):
+class MnistDataModule(UMDataModule):
     def __init__(self, data_dir: str = "./", batch_size_train: int=128, batch_size_test: int=1000, 
                  num_workers: int=4, mode: str='rand', chain=None, 
                  normalization_transform: torchvision.transforms=None, b_len=0):
@@ -261,11 +231,11 @@ class MnistDataModule(pl.LightningDataModule):
         self.transform = transforms.Compose([transforms.ToTensor(), normalization_transform])
                              
     def setup(self, stage = None):
-        train_ds=torchvision.datasets.MNIST(self.data_dir, train=True, download=False, transform=self.transform)
+        train_ds=torchvision.datasets.MNIST(self.data_dir, train=True, download=False, transform=self.transform) # transform data as it is loaded
         test_ds=torchvision.datasets.MNIST(self.data_dir, train=False, download=False, transform=self.transform)
         
         def prepare_data(ds):
-            filtered_ds=[el for el in ds if el[1] in self.classes] # Remove classes 8,9 to have the right nb
+            filtered_ds=[el for el in ds if el[1] in self.classes] # Remove classes 8,9 to have the right nb (8 classes tot for UM tree)
             filtered_df = pd.DataFrame(filtered_ds, columns=[["img", "label"]])
             class_index = [filtered_df.loc[filtered_df["label"].values == class_label].index for class_label in self.classes]
             filtered_df["label"] = to_onehot(filtered_df["label"], num_classes=self.nb_classes)
@@ -273,30 +243,22 @@ class MnistDataModule(pl.LightningDataModule):
 
         filtered_train_df, train_class_index = prepare_data(train_ds)
         filtered_test_df, _ = prepare_data(test_ds)
-        
-        if self.mode == 'rand':
-            self.um_train_ds=MnistLinearDataset(filtered_train_df, transform=None)            
-            self.test_ds=MnistLinearDataset(filtered_test_df, transform=None)
-        
-        else: 
-            self.um_train_ds=UltrametricMnistDataset(filtered_train_df, transform=None)
-
-            if self.mode in ['um', 'split']:
-                if self.mode == 'um':
-                    self.train_sampler = UltraMetricSampler(data_source=self.um_train_ds, chain=self.markov_chain, class_index=train_class_index, 
-                                                            nb_classes=self.nb_classes, batch_size_train=self.batch_size_train, b_len=self.b_len, with_replacement=False)
-                if self.mode == 'split':
-                    self.train_sampler = UltraMetricSampler(data_source=self.um_train_ds, chain=self.markov_chain, class_index=train_class_index, 
-                                                            nb_classes=self.nb_classes, batch_size_train=self.batch_size_train, b_len=self.b_len, with_replacement=True)
-                self.test_ds = MnistLinearDataset(filtered_test_df, transform=None)
-        
+        self.um_train_ds = MnistLinearDataset(filtered_train_df, transform=None)            
+        self.test_ds = MnistLinearDataset(filtered_test_df, transform=None)
         self.predict_ds = MnistPredictDataset(filtered_test_df, transform=None)
 
+        if self.mode in ['um', 'split']:
+            if self.mode == 'um':
+                self.train_sampler = UltraMetricSampler(data_source=self.um_train_ds, chain=self.markov_chain, class_index=train_class_index, 
+                                                        nb_classes=self.nb_classes, batch_size_train=self.batch_size_train, b_len=self.b_len, with_replacement=False)
+            if self.mode == 'split':
+                self.train_sampler = UltraMetricSampler(data_source=self.um_train_ds, chain=self.markov_chain, class_index=train_class_index, 
+                                                        nb_classes=self.nb_classes, batch_size_train=self.batch_size_train, b_len=self.b_len, with_replacement=True)
                                 
 class SynthDataModule(UMDataModule):
     def __init__(self, max_depth: int, data_dir: str = "./", batch_size_train: int=8, batch_size_test: int=1000, 
                  num_workers: int=4, mode: str='rand', chain=None, leaf_length=200, noise_level=1, p_flip=0.1,
-                 p_noise=0.02, normalize_data=False, repeat_data=1, test_split=0.1, b_len=0, no_reshuffle=False):
+                 p_noise=0.02, normalize_data=False, test_split=0.1, b_len=0, no_reshuffle=False):
         super().__init__(max_depth=max_depth, data_dir=data_dir, batch_size_train=batch_size_train, 
                         batch_size_test=batch_size_test, num_workers=num_workers, mode=mode, chain=chain,
                         b_len=b_len, no_reshuffle=no_reshuffle)
@@ -305,7 +267,6 @@ class SynthDataModule(UMDataModule):
                                          leaf_length=leaf_length, shuffle_labels=True,
                                          noise_level=noise_level)
         self.normalize_data = normalize_data
-        self.repeat_data = repeat_data
         self.test_split = test_split
                              
     def setup(self, stage = None):
@@ -316,8 +277,6 @@ class SynthDataModule(UMDataModule):
         X = torch.tensor(X, dtype=torch.float)
         y = torch.tensor(y, dtype=torch.float)
         X_train, X_test, y_train, y_test = model_selection.train_test_split(X, y, test_size=self.test_split)
-        X_train = torch.tile(X_train, (self.repeat_data, 1))
-        y_train = torch.tile(y_train, (self.repeat_data,))
         print(f"Train data size {list(X_train.size())}, {list(y_train.size())}, classes: {list(torch.unique(y_train).size())[0]}")
         print(f"Val data size {list(X_test.size())}, {list(y_test.size())}, classes: {list(torch.unique(y_test).size())[0]}")
 

@@ -1,3 +1,4 @@
+from math import ceil
 from matplotlib import pyplot as plt
 import numpy as np
 from sklearn import metrics
@@ -197,10 +198,10 @@ class FFNetwork(pl.LightningModule):
             self.eval_freq_factor *= 0.85
             if abs(self.last_val_acc - val_acc) > 0.2: self.eval_freq_factor *= 0.5
         if self.last_val_acc > 0.80: # stop exp growth at val_acc == 0.80
-            self.eval_freq_factor = max(self.eval_freq_factor*0.5, 1.05)
+            self.eval_freq_factor = max(self.eval_freq_factor*0.6, 1.1)
 
         self.curr_eval_freq *= self.eval_freq_factor
-        self.curr_eval_freq = int(((self.curr_eval_freq // self.hparams.b_len)+1) * self.hparams.b_len) # multiple of b_len
+        self.curr_eval_freq = int(ceil(self.curr_eval_freq / self.hparams.b_len) * self.hparams.b_len) # multiple of b_len
         if self.curr_eval_freq > 10000:
             self.eval_freq_factor = 1.1
             if self.curr_eval_freq > 15000: # upper threshold for eval_freq, otherwise will never be reached and timeout

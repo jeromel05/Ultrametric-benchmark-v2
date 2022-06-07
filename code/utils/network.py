@@ -192,18 +192,19 @@ class FFNetwork(pl.LightningModule):
                 layer.reset_parameters()
 
     def adjust_eval_freq(self, val_acc):
-        if abs(self.last_val_acc - val_acc) < 0.05: self.eval_freq_factor *= 1.15
-        elif abs(self.last_val_acc - val_acc) > 0.15: self.eval_freq_factor *= 0.85
-        if self.last_val_acc < 0.80: # stop exp growth at val_acc == 0.80
-            self.curr_eval_freq *= self.eval_freq_factor
-        else:
-            self.curr_eval_freq = max(min(self.curr_eval_freq*0.5, 8*self.hparams.b_len), 4*self.hparams.b_len)
-            self.eval_freq_factor = 1.1
+        if abs(self.last_val_acc - val_acc) < 0.05: self.eval_freq_factor *= 1.1
+        elif abs(self.last_val_acc - val_acc) > 0.15: 
+            self.eval_freq_factor *= 0.85
+            if abs(self.last_val_acc - val_acc) > 0.2: self.eval_freq_factor *= 0.5
+        if self.last_val_acc > 0.80: # stop exp growth at val_acc == 0.80
+            self.eval_freq_factor = max(self.eval_freq_factor*0.5, 1.05)
+
+        self.curr_eval_freq *= self.eval_freq_factor
         self.curr_eval_freq = int(((self.curr_eval_freq // self.hparams.b_len)+1) * self.hparams.b_len) # multiple of b_len
-        if self.curr_eval_freq > 20000:
-            self.eval_freq_factor = 1.25
-            if self.curr_eval_freq > 25000: # upper threshold for eval_freq, otherwise will never be reached and timeout
-                self.curr_eval_freq = 25000
+        if self.curr_eval_freq > 10000:
+            self.eval_freq_factor = 1.1
+            if self.curr_eval_freq > 15000: # upper threshold for eval_freq, otherwise will never be reached and timeout
+                self.curr_eval_freq = 20000
         if self.curr_eval_freq < self.hparams.b_len:
             self.curr_eval_freq = self.hparams.b_len
             self.eval_freq_factor = 2.5

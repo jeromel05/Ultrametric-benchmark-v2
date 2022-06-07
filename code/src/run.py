@@ -97,8 +97,11 @@ def run():
                         last_val_step=args.last_val_step)
         
         logger = TensorBoardLogger(logs_path, name=f"metrics", version=f"fold_{seed}")
-        if args.mode in ['um', 'split']:
+        if args.mode == 'um':
             data_module.set_markov_chain(args, seed)
+            val_check_interval=1
+        elif args.mode == 'split':
+            data_module.set_split_chain()
             val_check_interval=1
         elif args.mode == 'rand':
             val_check_interval=15
@@ -175,7 +178,7 @@ def def_callbacks(args, checkpoint_path, seed):
         callbacks.append(checkpoint_callback)
 
     if args.early_stop:
-        patience = 100 if args.b_len > 0 else 100
+        patience = 100 if args.b_len > 0 else 50
         stopping_threshold = 0.98 if args.b_len > 0 else 0.997
         callbacks.append(
             Custom_EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=True, 

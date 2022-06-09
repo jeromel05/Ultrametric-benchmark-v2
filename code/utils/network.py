@@ -6,6 +6,7 @@ import torch
 import pytorch_lightning as pl
 from torch import nn
 from torch.nn import functional as F
+import torchvision
 from torchmetrics.functional import accuracy, average_precision, auroc, roc, confusion_matrix
 from torchmetrics.utilities.data import to_categorical
 from util_functions import make_confusion_matrix_figure, make_roc_curves_figure
@@ -35,6 +36,22 @@ class FFNetwork(pl.LightningModule):
         self.has_converged = False
 
         self.save_hyperparameters()
+    
+    #####
+    def loss_func():
+        return F.binary_cross_entropy()
+        return F.nll_loss(logits, y)
+
+    def alt_forward(self, x):
+        out = self.model(x)
+        return F.log_softmax(out, dim=1)
+
+    def create_model(self):
+        model = torchvision.models.resnet18(pretrained=False, num_classes=8)
+        model.conv1 = nn.Conv2d(1, 28, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False) # modify resnet for mnist ds
+        model.maxpool = nn.Identity()
+        return model
+    ######
 
     def forward(self, x):
         hidden = self.l1(x)
@@ -149,7 +166,7 @@ class FFNetwork(pl.LightningModule):
 
             if not self.hparams.no_reshuffle: 
                 until_idx=self.curr_val_step
-                if self.hparams.mode == 'um' and self.hparams.b_len > 0:
+                if self.hparams.mode in ['um', 'split'] and self.hparams.b_len > 0:
 
                     if self.trainer.current_epoch > 0:
                         self.adjust_eval_freq(val_acc)
@@ -197,11 +214,11 @@ class FFNetwork(pl.LightningModule):
         elif abs(self.last_val_acc - val_acc) > 0.15: 
             self.eval_freq_factor *= 0.85
             if abs(self.last_val_acc - val_acc) > 0.2: self.eval_freq_factor *= 0.5
-        if self.last_val_acc > 0.80: # stop exp growth at val_acc == 0.80
+        if val_acc > 0.83: # stop exp growth at val_acc == 0.80
             self.eval_freq_factor = max(self.eval_freq_factor*0.6, 1.1)
 
         self.curr_eval_freq *= self.eval_freq_factor
-        self.curr_eval_freq = int(ceil(self.curr_eval_freq / self.hparams.b_len) * self.hparams.b_len) # multiple of b_len
+        
         if self.curr_eval_freq > 10000:
             self.eval_freq_factor = 1.1
             if self.curr_eval_freq > 15000: # upper threshold for eval_freq, otherwise will never be reached and timeout
@@ -209,6 +226,10 @@ class FFNetwork(pl.LightningModule):
         if self.curr_eval_freq < self.hparams.b_len:
             self.curr_eval_freq = self.hparams.b_len
             self.eval_freq_factor = 2.5
+        if val_acc > 0.70:
+            if self.curr_eval_freq < 400:
+                self.curr_eval_freq = 400
+        self.curr_eval_freq = int(ceil(self.curr_eval_freq / self.hparams.b_len) * self.hparams.b_len) # multiple of b_len
 
     def set_curr_steps_epochs(self):
         self.curr_val_epoch = self.trainer.current_epoch

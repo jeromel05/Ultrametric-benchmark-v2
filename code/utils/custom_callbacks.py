@@ -182,8 +182,6 @@ class Custom_EarlyStopping(Callback):
             return
         self._run_early_stopping_check(trainer)
 
-
-
     def on_validation_end(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule") -> None:
         if self._check_on_train_epoch_end or self._should_skip_check(trainer):
             return
@@ -205,8 +203,10 @@ class Custom_EarlyStopping(Callback):
         # stop every ddp process if any world process decides to stop
         trainer.should_stop = trainer.should_stop or should_stop
         if should_stop:
+            print('Stopping because of CustomEarlyStop Callback')
             self.stopped_epoch = trainer.current_epoch
         if reason and self.verbose:
+            print(reason)
             self._log_info(trainer, reason)
 
     def _evaluate_stopping_criteria(self, current: torch.Tensor) -> Tuple[bool, Optional[str]]:
@@ -239,10 +239,10 @@ class Custom_EarlyStopping(Callback):
         if torch.isfinite(self.best_score):
             msg = (
                 f"Metric {self.monitor} improved by {abs(self.best_score - current):.3f} >="
-                f" min_delta = {abs(self.min_delta)}. New best score: {current:.3f}"
+                f" min_delta = {abs(self.min_delta)}. New best score: {current:.3f}. Wait count: {self.wait_count}"
             )
         else:
-            msg = f"Metric {self.monitor} improved. New best score: {current:.3f}"
+            msg = f"Metric {self.monitor} improved. New best score: {current:.3f}. Wait count: {self.wait_count}"
         return msg
 
     @staticmethod

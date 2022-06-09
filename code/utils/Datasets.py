@@ -115,7 +115,6 @@ class UltraMetricSampler(torch.utils.data.Sampler):
         self.epoch_size = epoch_size
 
     def __iter__(self):
-        um_indexes = []            
         idx = self.total_length
         
         if self.with_replacement:
@@ -133,12 +132,14 @@ class UltraMetricSampler(torch.utils.data.Sampler):
     def sample_with_replacement(self, idx):
         um_indexes = []
         um_class = 0
+        idx0 = idx
 
-        while idx < self.epoch_size:
+        while idx < self.epoch_size + idx0:
             um_idx = np.random.choice(self.class_index[um_class])
             um_indexes.append(um_idx)
             um_class = self.temp_shuff_chain[idx]
             idx += 1
+
         return um_indexes
 
     def sample_without_replacement(self, idx):
@@ -216,7 +217,7 @@ class UMDataModule(pl.LightningDataModule):
 
     def set_split_chain(self):
         split_chain = []
-        classes = np.random.choice(np.arange(0, self.nb_classes-1, step=2), size=50000)
+        classes = np.random.choice(np.arange(0, self.nb_classes-1, step=2), size=100000)
         split_chain = [el for class1 in classes for el in np.random.randint(low=class1, high=class1+2, size=self.block_length)]
         
         self.markov_chain = split_chain

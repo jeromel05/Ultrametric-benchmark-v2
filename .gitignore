@@ -171,6 +171,10 @@ notebooks/.DS_Store
 .DS_Store?
 .DS_Store*
 logs/
+old_logs/
+dl_logs/
+merged_logs/
+to_merge/
 
 
 *.ckpt

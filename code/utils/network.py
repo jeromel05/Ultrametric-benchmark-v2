@@ -37,16 +37,15 @@ class FFNetwork(pl.LightningModule):
 
         self.save_hyperparameters()
     
-    #####
-    def loss_func():
-        return F.binary_cross_entropy()
-        return F.nll_loss(logits, y)
+    def loss_func(self):
+        return F.BCELoss()
 
+    ######
     def alt_forward(self, x):
         out = self.model(x)
         return F.log_softmax(out, dim=1)
 
-    def create_model(self):
+    def create_cnn_model(self):
         model = torchvision.models.resnet18(pretrained=False, num_classes=8)
         model.conv1 = nn.Conv2d(1, 28, kernel_size=(3, 3), stride=(1, 1), padding=(1, 1), bias=False) # modify resnet for mnist ds
         model.maxpool = nn.Identity()
@@ -103,7 +102,7 @@ class FFNetwork(pl.LightningModule):
         num_classes = y.size(1)
         x = x.view(x.size(0), -1)
         o = self.forward(x)
-        loss = F.binary_cross_entropy(o, y)
+        loss = self.loss_func(o, y)
         self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=False, logger=True)
 
         target = to_categorical(y, argmax_dim=1)
@@ -140,7 +139,7 @@ class FFNetwork(pl.LightningModule):
             num_classes = y.size(1)
             x = x.view(x.size(0), -1)
             o = self.forward(x)
-            loss = F.binary_cross_entropy(o, y)
+            loss = self.loss_func(o, y)
             self.log('val_loss', loss)
             target = to_categorical(y, argmax_dim=1)
             
@@ -183,7 +182,7 @@ class FFNetwork(pl.LightningModule):
         num_classes = y.size(1)
         x = x.view(x.size(0), -1)
         o = self.forward(x)
-        loss = F.binary_cross_entropy(o, y)
+        loss = self.loss_func(o, y)
         self.log('test_loss', loss, on_step=False, on_epoch=True, prog_bar=False, logger=True)
         
         target = to_categorical(y, argmax_dim=1)

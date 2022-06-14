@@ -2,6 +2,7 @@ import numpy as np
 import pytorch_lightning as pl
 from pytorch_lightning.callbacks import Callback, ProgressBarBase
 
+# not used
 class UltraMetricCallback(Callback):
     def __init__(self, eval_steps: list):
         super().__init__()

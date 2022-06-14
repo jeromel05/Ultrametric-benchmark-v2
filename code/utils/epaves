@@ -20,3 +20,21 @@ um_indexes = []
         self.um_indexes = um_indexes
         print(f"classes: ({class_to_sample}, {class_to_sample+1}), {len(um_indexes)}, {um_indexes[:30]}")
         return iter(um_indexes)
+
+
+
+
+def prepare_target(self, ds):
+        #filtered_df=pd.DataFrame([(el[0], torch.tensor(el[1], dtype=torch.float))  for el in ds if el[1] in self.classes], columns=[["img", "label"]])
+        filtered_df=pd.DataFrame([(el[0],el[1]) for el in ds if el[1] in self.classes], columns=[["img", "label"]])
+        class_index = [filtered_df.loc[filtered_df["label"].values == class_label].index for class_label in self.classes]
+        #onehot_tensor = to_onehot(label_tensor, num_classes=self.nb_classes)
+        #filtered_df["label"] = pd.get_dummies(filtered_df["label"])
+        enc = OneHotEncoder(handle_unknown='ignore')
+        enc.fit(filtered_df["label"])
+        
+        onehot_label = enc.transform(filtered_df["label"]).toarray()
+        print(onehot_label[:2])
+
+        return filtered_df['img'].values, torch.tensor(onehot_label, dtype=torch.float), class_index
+	

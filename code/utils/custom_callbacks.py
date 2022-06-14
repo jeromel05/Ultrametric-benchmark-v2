@@ -98,7 +98,6 @@ class Custom_EarlyStopping(Callback):
         check_finite: bool = True,
         stopping_threshold: float = None,
         divergence_threshold: Optional[float] = None,
-        check_on_train_epoch_end: Optional[bool] = None,
     ):
         super().__init__()
         self.monitor = monitor
@@ -112,7 +111,7 @@ class Custom_EarlyStopping(Callback):
         self.divergence_threshold = divergence_threshold
         self.wait_count = 0
         self.stopped_epoch = 0
-        self._check_on_train_epoch_end = check_on_train_epoch_end
+        self._check_on_train_epoch_end = False # make sure we only evaluate after validation epoch
 
         if self.mode not in self.mode_dict:
             raise MisconfigurationException(f"`mode` can be {', '.join(self.mode_dict.keys())}, got {self.mode}")
@@ -127,10 +126,7 @@ class Custom_EarlyStopping(Callback):
 
 
     def setup(self, trainer: "pl.Trainer", pl_module: "pl.LightningModule", stage: Optional[str] = None) -> None:
-        if self._check_on_train_epoch_end is None:
-            # if the user runs validation multiple times per training epoch or multiple training epochs without
-            # validation, then we run after validation instead of on train epoch end
-            self._check_on_train_epoch_end = trainer.val_check_interval == 1.0 and trainer.check_val_every_n_epoch == 1
+        return
 
 
     def _validate_condition_metric(self, logs: Dict[str, float]) -> bool:
@@ -173,7 +169,6 @@ class Custom_EarlyStopping(Callback):
 
     def _should_skip_check(self, trainer: "pl.Trainer") -> bool:
         from pytorch_lightning.trainer.states import TrainerFn
-
         return trainer.state.fn != TrainerFn.FITTING or trainer.sanity_checking
 
 

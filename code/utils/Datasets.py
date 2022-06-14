@@ -10,39 +10,10 @@ import pytorch_lightning as pl
 from torchvision import transforms, utils
 from torch.utils.data import Dataset, DataLoader, TensorDataset
 from torchmetrics.utilities.data import to_onehot
+from sklearn.preprocessing import OneHotEncoder
 
 from functions_markov import generate_markov_chain, shuffle_blocks_v2
 from UltrametricTree import SynthUltrametricTree
-
-
-class MnistLinearDataset(Dataset):
-    """MnistLinearDataset dataset"""
-    
-    def __init__(self, data_df, transform=None):
-        """
-        Args:
-            data_df (DataFrame): 
-            transform (callable, optional): Optional transform to be applied
-                on a sample.
-        """
-        self.images = data_df["img"].values
-        self.labels = data_df["label"].values
-        self.transform = transform
-        
-    def __len__(self):
-        return len(self.labels)
-
-    def __getitem__(self, idx):
-        if torch.is_tensor(idx):
-            idx = idx.tolist()
-
-        sample_img = self.images[idx][0].reshape(28*28)
-        sample_label = torch.Tensor(self.labels[idx][0])
-        
-        if self.transform:
-            sample_img = self.transform(sample_img)
-
-        return [sample_img, sample_label]
 
 
 class MnistPredictDataset(Dataset):
@@ -65,7 +36,7 @@ class MnistPredictDataset(Dataset):
         if torch.is_tensor(idx):
             idx = idx.tolist()
 
-        sample_img = self.images[idx][0].reshape(28*28)
+        sample_img = self.images[idx].reshape(28*28)
         
         if self.transform:
             sample_img = self.transform(sample_img)
@@ -131,14 +102,16 @@ class UltraMetricSampler(torch.utils.data.Sampler):
 
     def sample_with_replacement(self, idx):
         um_indexes = []
-        um_class = 0
         idx0 = idx
+        um_class = self.temp_shuff_chain[idx]
+        idx += 1
 
         while idx < self.epoch_size + idx0:
-            um_idx = np.random.choice(self.class_index[um_class])
+            um_idx = np.random.choice(self.class_index[um_class], replace=True)
             um_indexes.append(um_idx)
             um_class = self.temp_shuff_chain[idx]
             idx += 1
+            #print(f'{um_class}: {um_idx}',  end=' ')
 
         return um_indexes
 
@@ -173,8 +146,8 @@ class UltraMetricSampler(torch.utils.data.Sampler):
 
 
 class UMDataModule(pl.LightningDataModule):
-    def __init__(self, max_depth: int, data_dir: str = "./", batch_size_train: int=128, batch_size_test: int=1000, 
-                 num_workers: int=4, mode: str='rand', chain=None, b_len=0, no_reshuffle=False, block_length=1000):
+    def __init__(self, b_len: int, max_depth: int, data_dir: str = "./", batch_size_train: int=128, batch_size_test: int=1000, 
+                 num_workers: int=4, mode: str='rand', chain=None, no_reshuffle=False, block_length=1000):
         super().__init__()
         self.data_dir = data_dir
         self.batch_size_train = batch_size_train
@@ -217,16 +190,16 @@ class UMDataModule(pl.LightningDataModule):
 
     def set_split_chain(self):
         split_chain = []
-        classes = np.random.choice(np.arange(0, self.nb_classes-1, step=2), size=100000)
+        classes = np.random.choice(np.arange(0, self.nb_classes-1, step=2), size=10000)
         split_chain = [el for class1 in classes for el in np.random.randint(low=class1, high=class1+2, size=self.block_length)]
         
         self.markov_chain = split_chain
 
                              
 class MnistDataModule(UMDataModule):
-    def __init__(self, data_dir: str = "./", batch_size_train: int=128, batch_size_test: int=1000, 
+    def __init__(self, b_len: int, data_dir: str = "./", batch_size_train: int=128, batch_size_test: int=1000, 
                  num_workers: int=4, mode: str='rand', chain=None, 
-                 normalization_transform: torchvision.transforms=None, b_len=0):
+                 normalization_transform: torchvision.transforms=None, no_reshuffle=False, block_length=1000):
         super().__init__(max_depth=3, data_dir=data_dir, batch_size_train=batch_size_train, batch_size_test=batch_size_test, 
                         num_workers=num_workers, mode=mode, chain=chain, b_len=b_len)
         self.transform = transforms.Compose([transforms.ToTensor(), normalization_transform])
@@ -234,19 +207,27 @@ class MnistDataModule(UMDataModule):
     def setup(self, stage = None):
         train_ds=torchvision.datasets.MNIST(self.data_dir, train=True, download=False, transform=self.transform) # transform data as it is loaded
         test_ds=torchvision.datasets.MNIST(self.data_dir, train=False, download=False, transform=self.transform)
-        
-        def prepare_data(ds):
-            filtered_ds=[el for el in ds if el[1] in self.classes] # Remove classes 8,9 to have the right nb (8 classes tot for UM tree)
-            filtered_df = pd.DataFrame(filtered_ds, columns=[["img", "label"]])
-            class_index = [filtered_df.loc[filtered_df["label"].values == class_label].index for class_label in self.classes]
-            filtered_df["label"] = to_onehot(filtered_df["label"], num_classes=self.nb_classes)
-            return filtered_df, class_index
+        train_img_tensor, train_label_list = [[el[column] for el in train_ds if el[1] in self.classes] for column in [0,1]]
+        test_img_tensor, test_label_list = [[el[column] for el in test_ds if el[1] in self.classes] for column in [0,1]]
 
-        filtered_train_df, train_class_index = prepare_data(train_ds)
-        filtered_test_df, _ = prepare_data(test_ds)
-        self.um_train_ds = MnistLinearDataset(filtered_train_df, transform=None)            
-        self.test_ds = MnistLinearDataset(filtered_test_df, transform=None)
-        self.predict_ds = MnistPredictDataset(filtered_test_df, transform=None)
+        train_img_tensor = [el.flatten() for el in train_img_tensor]
+        test_img_tensor = [el.flatten() for el in test_img_tensor]
+
+        train_img_tensor = torch.stack(train_img_tensor, dim=0)
+        test_img_tensor = torch.stack(test_img_tensor, dim=0)
+        train_y = torch.tensor(train_label_list, dtype=torch.float)
+        test_y = torch.tensor(test_label_list, dtype=torch.float)
+
+        def prepare_target_data(y):
+            class_index = [np.where(y==class_label)[0] for class_label in self.classes] 
+            y = to_onehot(y, self.nb_classes)
+            return y, class_index
+        
+        train_y, train_class_index = prepare_target_data(train_y)
+        test_y, _ = prepare_target_data(test_y)
+        self.um_train_ds = TensorDataset(train_img_tensor, train_y)
+        self.test_ds = TensorDataset(test_img_tensor, test_y)
+        #self.predict_ds = MnistPredictDataset(filtered_test_df, transform=None)
 
         if self.mode in ['um', 'split']:
             if self.mode == 'um':
@@ -255,6 +236,8 @@ class MnistDataModule(UMDataModule):
             if self.mode == 'split':
                 self.train_sampler = UltraMetricSampler(data_source=self.um_train_ds, chain=self.markov_chain, class_index=train_class_index, 
                                                         nb_classes=self.nb_classes, batch_size_train=self.batch_size_train, b_len=self.b_len, with_replacement=True)
+
+
                                 
 class SynthDataModule(UMDataModule):
     def __init__(self, max_depth: int, data_dir: str = "./", batch_size_train: int=8, batch_size_test: int=1000, 

@@ -13,7 +13,7 @@ from util_functions import make_confusion_matrix_figure, make_roc_curves_figure
 
 class FFNetwork(pl.LightningModule):
     def __init__(self, input_size, hidden_size, nb_classes, mode, optimizer, lr, lr_scheduler, 
-                 b_len, eval_freq, eval_freq_factor, no_reshuffle,  last_val_step=0):
+                 b_len, eval_freq, eval_freq_factor, no_reshuffle, batch_size,  last_val_step=0):
         super().__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size

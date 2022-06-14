@@ -35,7 +35,7 @@ def run():
     parser.add_argument('--input_size', type=int, default=200, help="define level of verbosity")
     parser.add_argument('--batch_size_train', type=int, default=32, help="define level of verbosity")
     parser.add_argument('--batch_size_test', type=int, default=1000, help="define level of verbosity")
-    parser.add_argument('--max_tree_depth', type=int, default=3, required=True, help="define level of verbosity")
+    parser.add_argument('--max_tree_depth', type=int, default=3, help="define level of verbosity")
     parser.add_argument('--noise_level', type=int, default=1, help="define level of verbosity")
     parser.add_argument('--p_flip', type=float, default=0.1, help="define level of verbosity")
     parser.add_argument('--p_noise', type=float, default=0.05, help="define level of verbosity")
@@ -80,6 +80,11 @@ def run():
     assert(eval_freq > 0 and eval_freq >= args.b_len)
     print(f'Start eval_freq: {eval_freq}')
 
+    if args.dataset == 'mnist':
+        input_size = 28*28
+    else:
+        input_size = args.input_size
+
     # training
     for seed in np.arange(args.start_seed, args.start_seed + args.nb_folds, step=1):
         start_time = time.time()
@@ -90,10 +95,10 @@ def run():
         print(f'{bcolors.OKCYAN}Running mode: {args.mode} seed: {seed} {bcolors.ENDC}')
         callbacks, checkpoint_callback = def_callbacks(args, logs_path, seed)
 
-        model = FFNetwork(input_size=args.input_size, hidden_size=args.hidden_size, nb_classes=nb_classes, 
+        model = FFNetwork(input_size=input_size, hidden_size=args.hidden_size, nb_classes=nb_classes, 
                         mode=args.mode, optimizer=args.optimizer, lr=args.lr, lr_scheduler=args.lr_scheduler,
-                        b_len=args.b_len, eval_freq=eval_freq, eval_freq_factor=args.eval_freq_factor, no_reshuffle=args.no_reshuffle,
-                        last_val_step=args.last_val_step)
+                        b_len=args.b_len, eval_freq=eval_freq, eval_freq_factor=args.eval_freq_factor,
+                        no_reshuffle=args.no_reshuffle, batch_size=args.batch_size_train, last_val_step=args.last_val_step)
         
         logger = TensorBoardLogger(logs_path, name=f"metrics", version=f"fold_{seed}")
         if args.mode == 'um':
@@ -141,7 +146,8 @@ def create_data_modules(args, dataset_name: str):
             data_module = MnistDataModule(data_dir=args.datafolder, mode=args.mode, 
                                     batch_size_train=args.batch_size_train, batch_size_test=args.batch_size_test,
                                     num_workers=args.num_workers, 
-                                    normalization_transform=transforms.Normalize((0.1307,), (0.3081,)))
+                                    normalization_transform=transforms.Normalize((0.1307,), (0.3081,)),  
+                                    b_len=args.b_len, no_reshuffle=args.no_reshuffle)
         elif dataset_name == 'synth':
             data_module = SynthDataModule(data_dir=args.datafolder, mode=args.mode, 
                                         batch_size_train=args.batch_size_train, batch_size_test=args.batch_size_test, 
@@ -176,10 +182,10 @@ def def_callbacks(args, checkpoint_path, seed):
 
     if args.early_stop:
         if args.mode in ['um', 'rand']:
-            patience = 60 if args.b_len > 0 else 25
+            patience = 10 if args.b_len > 0 else 20
         elif args.mode == 'split':
             patience = 100
-        stopping_threshold = 0.98 if args.b_len > 0 else 0.997
+        stopping_threshold = 0.985 if args.b_len > 0 else 0.997
         callbacks.append(
             Custom_EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=True, 
                         mode="max", stopping_threshold=stopping_threshold, patience=patience, strict=True))

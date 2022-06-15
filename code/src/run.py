@@ -202,7 +202,11 @@ def def_callbacks(args, checkpoint_path, seed):
 def def_logs_path(args):
     now = datetime.now()
     dt_string = now.strftime("%d%m_%H%M")
-    ckpt_name = f"{args.job_id}_{dt_string}_{args.dataset}_{args.mode}_b{args.b_len}_d{args.max_tree_depth}_h{args.hidden_size}_lr{args.lr}_rep{args.start_seed}/"
+    if args.dataset == 'mnist':
+        tree_depth_str = ''
+    elif args.dataset == 'synth':
+        tree_depth_str = f'_d{args.max_tree_depth}'
+    ckpt_name = f"{args.job_id}_{dt_string}_{args.dataset}_{args.mode}_b{args.b_len}{tree_depth_str}_h{args.hidden_size}_lr{args.lr}_rep{args.start_seed}/"
     logs_path = os.path.join(args.logfolder, ckpt_name)
     print(f"Saving logs at: {logs_path}")
     return logs_path

@@ -234,10 +234,10 @@ class Custom_EarlyStopping(Callback):
         if torch.isfinite(self.best_score):
             msg = (
                 f"Metric {self.monitor} improved by {abs(self.best_score - current):.3f} >="
-                f" min_delta = {abs(self.min_delta)}. New best score: {current:.3f}. Wait count: {self.wait_count}"
+                f" min_delta = {abs(self.min_delta)}. New best score: {current:.3f}."
             )
         else:
-            msg = f"Metric {self.monitor} improved. New best score: {current:.3f}. Wait count: {self.wait_count}"
+            msg = f"Metric {self.monitor} improved. New best score: {current:.3f}."
         return msg
 
     @staticmethod

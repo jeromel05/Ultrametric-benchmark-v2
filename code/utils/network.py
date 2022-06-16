@@ -13,7 +13,7 @@ from util_functions import make_confusion_matrix_figure, make_roc_curves_figure
 
 class FFNetwork(pl.LightningModule):
     def __init__(self, input_size, hidden_size, nb_classes, mode, optimizer, lr, lr_scheduler, 
-                 b_len, eval_freq, eval_freq_factor, no_reshuffle, batch_size,  last_val_step=0):
+                 b_len, eval_freq, eval_freq_factor, no_reshuffle, batch_size,  s_len, last_val_step=0):
         super().__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -21,6 +21,8 @@ class FFNetwork(pl.LightningModule):
         self.relu = nn.ReLU()
         self.l2 = nn.Linear(self.hidden_size, nb_classes)
         self.softmax = nn.Softmax(dim = 1)
+
+        self.criterion = self.loss_func()
 
         self.run_val=True
         self.last_val_step=last_val_step
@@ -38,7 +40,7 @@ class FFNetwork(pl.LightningModule):
         self.save_hyperparameters()
     
     def loss_func(self):
-        return F.BCELoss()
+        return nn.BCELoss()
 
     ######
     def alt_forward(self, x):
@@ -102,7 +104,7 @@ class FFNetwork(pl.LightningModule):
         num_classes = y.size(1)
         x = x.view(x.size(0), -1)
         o = self.forward(x)
-        loss = self.loss_func(o, y)
+        loss = self.criterion(o, y)
         self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=False, logger=True)
 
         target = to_categorical(y, argmax_dim=1)
@@ -139,7 +141,7 @@ class FFNetwork(pl.LightningModule):
             num_classes = y.size(1)
             x = x.view(x.size(0), -1)
             o = self.forward(x)
-            loss = self.loss_func(o, y)
+            loss = self.criterion(o, y)
             self.log('val_loss', loss)
             target = to_categorical(y, argmax_dim=1)
             
@@ -182,7 +184,7 @@ class FFNetwork(pl.LightningModule):
         num_classes = y.size(1)
         x = x.view(x.size(0), -1)
         o = self.forward(x)
-        loss = self.loss_func(o, y)
+        loss = self.criterion(o, y)
         self.log('test_loss', loss, on_step=False, on_epoch=True, prog_bar=False, logger=True)
         
         target = to_categorical(y, argmax_dim=1)

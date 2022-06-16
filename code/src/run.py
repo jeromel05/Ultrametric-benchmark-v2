@@ -64,6 +64,7 @@ def run():
     parser.add_argument('--no_reshuffle', action='store_true', help="true means eval only at one point")
     parser.add_argument('--save_ckpt', action='store_true', default=False, help="define level of verbosity")
     parser.add_argument('--last_val_step', type=int, default=0, help="define level of verbosity")
+    parser.add_argument('--s_len', type=int, default=500, help="block lenght for split protocol")
 
 
     args = parser.parse_args()
@@ -98,7 +99,7 @@ def run():
         model = FFNetwork(input_size=input_size, hidden_size=args.hidden_size, nb_classes=nb_classes, 
                         mode=args.mode, optimizer=args.optimizer, lr=args.lr, lr_scheduler=args.lr_scheduler,
                         b_len=args.b_len, eval_freq=eval_freq, eval_freq_factor=args.eval_freq_factor,
-                        no_reshuffle=args.no_reshuffle, batch_size=args.batch_size_train, last_val_step=args.last_val_step)
+                        no_reshuffle=args.no_reshuffle, batch_size=args.batch_size_train, s_len=args.s_len, last_val_step=args.last_val_step)
         
         logger = TensorBoardLogger(logs_path, name=f"metrics", version=f"fold_{seed}")
         if args.mode == 'um':
@@ -147,7 +148,7 @@ def create_data_modules(args, dataset_name: str):
                                     batch_size_train=args.batch_size_train, batch_size_test=args.batch_size_test,
                                     num_workers=args.num_workers, 
                                     normalization_transform=transforms.Normalize((0.1307,), (0.3081,)),  
-                                    b_len=args.b_len, no_reshuffle=args.no_reshuffle)
+                                    b_len=args.b_len, no_reshuffle=args.no_reshuffle, s_len=args.s_len)
         elif dataset_name == 'synth':
             data_module = SynthDataModule(data_dir=args.datafolder, mode=args.mode, 
                                         batch_size_train=args.batch_size_train, batch_size_test=args.batch_size_test, 
@@ -155,7 +156,7 @@ def create_data_modules(args, dataset_name: str):
                                         noise_level=args.noise_level, p_flip=args.p_flip, p_noise=args.p_noise, 
                                         leaf_length=args.input_size, normalize_data=args.normalize_data, 
                                         test_split=args.test_split, b_len=args.b_len,
-                                        no_reshuffle=args.no_reshuffle)
+                                        no_reshuffle=args.no_reshuffle, s_len=args.s_len)
         return data_module
 
 def find_lr(trainer, model, checkpoint_path_fold, data_module):
@@ -182,9 +183,9 @@ def def_callbacks(args, checkpoint_path, seed):
 
     if args.early_stop:
         if args.mode in ['um', 'rand']:
-            patience = 10 if args.b_len > 0 else 20
+            patience = 4 if args.b_len > 0 else 30
         elif args.mode == 'split':
-            patience = 100
+            patience = 200
         stopping_threshold = 0.985 if args.b_len > 0 else 0.997
         callbacks.append(
             Custom_EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=True, 
@@ -206,7 +207,12 @@ def def_logs_path(args):
         tree_depth_str = ''
     elif args.dataset == 'synth':
         tree_depth_str = f'_d{args.max_tree_depth}'
-    ckpt_name = f"{args.job_id}_{dt_string}_{args.dataset}_{args.mode}_b{args.b_len}{tree_depth_str}_h{args.hidden_size}_lr{args.lr}_rep{args.start_seed}/"
+    if args.mode == 'um':
+        s_len_str = ''
+    elif args.mode == 'split':
+        s_len_str = f'_s{args.s_len}'
+
+    ckpt_name = f"{args.job_id}_{dt_string}_{args.dataset}_{args.mode}_b{args.b_len}{tree_depth_str}{s_len_str}_h{args.hidden_size}_lr{args.lr}_rep{args.start_seed}/"
     logs_path = os.path.join(args.logfolder, ckpt_name)
     print(f"Saving logs at: {logs_path}")
     return logs_path

@@ -146,8 +146,8 @@ class UltraMetricSampler(torch.utils.data.Sampler):
 
 
 class UMDataModule(pl.LightningDataModule):
-    def __init__(self, b_len: int, max_depth: int, data_dir: str = "./", batch_size_train: int=128, batch_size_test: int=1000, 
-                 num_workers: int=4, mode: str='rand', chain=None, no_reshuffle=False, block_length=1000):
+    def __init__(self, b_len: int, max_depth: int, data_dir: str = "./", batch_size_train: int=2, batch_size_test: int=1000, 
+                 num_workers: int=4, mode: str='rand', chain=None, no_reshuffle=False, s_len=500):
         super().__init__()
         self.data_dir = data_dir
         self.batch_size_train = batch_size_train
@@ -161,7 +161,7 @@ class UMDataModule(pl.LightningDataModule):
         self.markov_chain = chain
         self.b_len=b_len
         self.no_reshuffle=no_reshuffle
-        self.block_length=block_length
+        self.s_len=s_len
 
     def train_dataloader(self):
         return DataLoader(self.um_train_ds, batch_size=self.batch_size_train, shuffle=False, 
@@ -191,7 +191,7 @@ class UMDataModule(pl.LightningDataModule):
     def set_split_chain(self):
         split_chain = []
         classes = np.random.choice(np.arange(0, self.nb_classes-1, step=2), size=10000)
-        split_chain = [el for class1 in classes for el in np.random.randint(low=class1, high=class1+2, size=self.block_length)]
+        split_chain = [el for class1 in classes for el in np.random.randint(low=class1, high=class1+2, size=self.s_len)]
         
         self.markov_chain = split_chain
 
@@ -199,9 +199,9 @@ class UMDataModule(pl.LightningDataModule):
 class MnistDataModule(UMDataModule):
     def __init__(self, b_len: int, data_dir: str = "./", batch_size_train: int=128, batch_size_test: int=1000, 
                  num_workers: int=4, mode: str='rand', chain=None, 
-                 normalization_transform: torchvision.transforms=None, no_reshuffle=False, block_length=1000):
+                 normalization_transform: torchvision.transforms=None, no_reshuffle=False, s_len=500):
         super().__init__(max_depth=3, data_dir=data_dir, batch_size_train=batch_size_train, batch_size_test=batch_size_test, 
-                        num_workers=num_workers, mode=mode, chain=chain, b_len=b_len)
+                        num_workers=num_workers, mode=mode, chain=chain, b_len=b_len, s_len=s_len)
         self.transform = transforms.Compose([transforms.ToTensor(), normalization_transform])
                              
     def setup(self, stage = None):
@@ -242,10 +242,10 @@ class MnistDataModule(UMDataModule):
 class SynthDataModule(UMDataModule):
     def __init__(self, max_depth: int, data_dir: str = "./", batch_size_train: int=8, batch_size_test: int=1000, 
                  num_workers: int=4, mode: str='rand', chain=None, leaf_length=200, noise_level=1, p_flip=0.1,
-                 p_noise=0.02, normalize_data=False, test_split=0.1, b_len=0, no_reshuffle=False):
+                 p_noise=0.02, normalize_data=False, test_split=0.1, b_len=0, no_reshuffle=False, s_len=500):
         super().__init__(max_depth=max_depth, data_dir=data_dir, batch_size_train=batch_size_train, 
                         batch_size_test=batch_size_test, num_workers=num_workers, mode=mode, chain=chain,
-                        b_len=b_len, no_reshuffle=no_reshuffle)
+                        b_len=b_len, no_reshuffle=no_reshuffle, s_len=s_len)
         self.leaf_length = leaf_length
         self.tree = SynthUltrametricTree(max_depth=max_depth, p_flip=p_flip, p_noise=p_noise, 
                                          leaf_length=leaf_length, shuffle_labels=True,

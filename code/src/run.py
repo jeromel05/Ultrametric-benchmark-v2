@@ -65,6 +65,7 @@ def run():
     parser.add_argument('--save_ckpt', action='store_true', default=False, help="define level of verbosity")
     parser.add_argument('--last_val_step', type=int, default=0, help="define level of verbosity")
     parser.add_argument('--s_len', type=int, default=500, help="block lenght for split protocol")
+    parser.add_argument('--val_step', type=int, default=100, help="Determines steps btw validations")
 
 
     args = parser.parse_args()
@@ -86,6 +87,10 @@ def run():
     else:
         input_size = args.input_size
 
+    val_step = args.val_step
+    if eval_freq < args.val_step:
+        val_step = eval_freq
+
     # training
     for seed in np.arange(args.start_seed, args.start_seed + args.nb_folds, step=1):
         start_time = time.time()
@@ -99,7 +104,8 @@ def run():
         model = FFNetwork(input_size=input_size, hidden_size=args.hidden_size, nb_classes=nb_classes, 
                         mode=args.mode, optimizer=args.optimizer, lr=args.lr, lr_scheduler=args.lr_scheduler,
                         b_len=args.b_len, eval_freq=eval_freq, eval_freq_factor=args.eval_freq_factor,
-                        no_reshuffle=args.no_reshuffle, batch_size=args.batch_size_train, s_len=args.s_len, last_val_step=args.last_val_step)
+                        no_reshuffle=args.no_reshuffle, batch_size=args.batch_size_train, s_len=args.s_len, 
+                        last_val_step=args.last_val_step, val_step=val_step)
         
         logger = TensorBoardLogger(logs_path, name=f"metrics", version=f"fold_{seed}")
         if args.mode == 'um':
@@ -183,9 +189,9 @@ def def_callbacks(args, checkpoint_path, seed):
 
     if args.early_stop:
         if args.mode in ['um', 'rand']:
-            patience = 4 if args.b_len > 0 else 30
+            patience = 70 if args.b_len > 0 else 70
         elif args.mode == 'split':
-            patience = 200
+            patience = 300
         stopping_threshold = 0.985 if args.b_len > 0 else 0.997
         callbacks.append(
             Custom_EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=True, 

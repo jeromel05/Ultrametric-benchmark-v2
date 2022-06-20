@@ -137,7 +137,7 @@ class UltraMetricSampler(torch.utils.data.Sampler):
     def reset_sampler(self, until_idx=None):
         assert(self.b_len > 0)
         self.temp_shuff_chain = self.chain.copy()
-        print('SHUFFLING UNTIL: ', until_idx)
+        #print('SHUFFLING UNTIL: ', until_idx)
         if not until_idx == None:
             self.temp_shuff_chain[:until_idx] = shuffle_blocks_v2(self.chain[:until_idx], self.b_len)
         else:

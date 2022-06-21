@@ -100,7 +100,8 @@ def run():
         torch.manual_seed(seed)
         np.random.seed(seed)
         
-        data_module = create_data_modules(args)
+        if len(args.ckpt_path) == 0:
+            data_module = create_data_modules(args)
         print(f'{bcolors.OKCYAN}Running mode: {args.mode} seed: {seed} {bcolors.ENDC}')
         callbacks, checkpoint_callback = def_callbacks(args, logs_path, seed)
 
@@ -119,14 +120,16 @@ def run():
             val_check_interval=1
         elif args.mode == 'rand':
             val_check_interval=15
-            
-        trainer = pl.Trainer(default_root_dir=logs_path, gpus=args.gpu, 
+
+        if len(args.ckpt_path) == 0: 
+            trainer = pl.Trainer(default_root_dir=logs_path, gpus=args.gpu, 
                             num_nodes=1, precision=32, logger=logger, max_epochs=args.max_epochs,
                             callbacks=callbacks,
                             check_val_every_n_epoch=1, 
                             val_check_interval=val_check_interval,
                             enable_checkpointing=args.save_ckpt)
-                            #fast_dev_run=4)
+        else:
+            trainer = pl.Trainer() # Naive Trainer to use with loaded ckpt
         
         if args.auto_lr_find:
             print("Fitting lr...")
@@ -136,7 +139,9 @@ def run():
                 model.hparams.lr = suggested_lr
 
         if args.ckpt_path:
-            ckpt_path = args.ckpt_path + '.ckpt'
+            ckpt_path = args.ckpt_path
+            if not ckpt_path.endswith('.ckpt'):
+                ckpt_path = args.ckpt_path + '.ckpt'
             trainer.fit(model, ckpt_path=ckpt_path)
         else:
             trainer.fit(model, data_module)

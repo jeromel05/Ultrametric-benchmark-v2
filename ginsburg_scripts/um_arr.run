@@ -20,7 +20,7 @@ ckpt_path=""
 keep_correlations=false
 stoch_s_len=false
 
-while getopts h:b:d:l:s:e:f:g:c:i:j:k: flag
+while getopts ":h:b:d:l:s:e:f:g:c:i:j:k:" flag
 do
     case "${flag}" in
         h) h_size=${OPTARG};;

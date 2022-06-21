@@ -1,0 +1,36 @@
+#!/bin/sh
+#SBATCH --account=theory
+#SBATCH -c 4
+#SBATCH --time=00:40:00
+#SBATCH --gres gpu:1
+#SBATCH --mail-type=FAIL
+#SBATCH --mail-user=jl6181@columbia.edu
+#SBATCH --error="/burg/home/jl6181/home/scratch/stderr/%j_err.out"
+#SBATCH --output="/burg/home/jl6181/home/scratch/%j.out"
+
+module load cuda11.0/toolkit/11.0.3 cuda11.0/blas/11.0.3 cudnn8.0-cuda11.0/8.0.5.39
+
+echo "JOB_ID"
+echo $SLURM_JOB_ID
+start=`date +%s`
+
+
+tree_depth=5
+echo "RUNNING TESTS: UM_B0, SPLIT, RAND, UM_B10 at DEPTH $tree_depth"
+python ~/home/repo/code/src/run.py --datafolder ~/home/repo/data --logfolder /burg/home/jl6181/home/scratch/logs/ --noise_level 50 --max_tree_depth $tree_depth --gpu 1 --dataset synth --input_size 200 --batch_size_train 2 --batch_size_test 1000 --p_flip 0.1 --p_noise 0.02 --max_epochs 2 --nb_folds 1 --num_workers 4 --mode "um" --b_len 0 --eval_freq 20 --hidden_size 100 --lr 2.0 --job_id "test" --start_seed 0 --eval_freq_factor 1.2
+
+python ~/home/repo/code/src/run.py --datafolder ~/home/repo/data --logfolder /burg/home/jl6181/home/scratch/logs/ --noise_level 50 --max_tree_depth $tree_depth --gpu 1 --dataset synth --input_size 200 --batch_size_train 2 --batch_size_test 1000 --p_flip 0.1 --p_noise 0.02 --max_epochs 3 --nb_folds 1 --num_workers 4 --mode "um" --b_len 0 --eval_freq 10 --hidden_size 200 --lr 2.0 --job_id "test2" --start_seed 1 --eval_freq_factor 1.4 --last_val_step 50
+
+python ~/home/repo/code/src/run.py --datafolder ~/home/repo/data --logfolder /burg/home/jl6181/home/scratch/logs/ --noise_level 50 --max_tree_depth $tree_depth --gpu 1 --dataset synth --input_size 200 --batch_size_train 2 --batch_size_test 1000 --p_flip 0.1 --p_noise 0.02 --max_epochs 2 --nb_folds 1 --num_workers 4 --mode "split" --b_len 0 --eval_freq 500 --hidden_size 100 --lr 2.0 --early_stop --job_id "test3" --start_seed 10 --eval_freq_factor 1.5 --last_val_step 0
+
+python ~/home/repo/code/src/run.py --datafolder ~/home/repo/data --logfolder /burg/home/jl6181/home/scratch/logs/ --noise_level 50 --max_tree_depth $tree_depth --gpu 1 --dataset synth --input_size 200 --batch_size_train 2 --batch_size_test 1000 --p_flip 0.1 --p_noise 0.02 --max_epochs 3 --nb_folds 1 --num_workers 4 --mode "rand" --b_len 0 --eval_freq 4 --hidden_size 150 --lr 2.0 --early_stop --job_id "test4" --start_seed 11 --eval_freq_factor 1.8 --last_val_step 0
+
+python ~/home/repo/code/src/run.py --datafolder ~/home/repo/data --logfolder /burg/home/jl6181/home/scratch/logs/ --noise_level 50 --max_tree_depth $tree_depth --gpu 1 --dataset synth --input_size 200 --batch_size_train 2 --batch_size_test 1000 --p_flip 0.1 --p_noise 0.02 --max_epochs 5 --nb_folds 1 --num_workers 4 --mode "um" --b_len 10 --eval_freq 300 --hidden_size 200 --lr 2.0 --early_stop --job_id "test5" --start_seed 4 --eval_freq_factor 1.3 --last_val_step 0
+
+
+
+
+
+end=`date +%s`
+runtime=$((end-start))
+echo "JOB COMPLETED IN $runtime"

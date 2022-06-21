@@ -10,7 +10,7 @@
 #SBATCH --error="/burg/home/jl6181/home/scratch/stderr/%j_err.out"
 #SBATCH --output="/burg/home/jl6181/home/scratch/%j.out"
 
-module load cuda11.2/toolkit cuda11.2/blas cudnn8.1-cuda11.2
+module load cuda11.0/toolkit/11.0.3 cuda11.0/blas/11.0.3 cudnn8.0-cuda11.0/8.0.5.39
 
 echo "JOB_ID" 
 echo $SLURM_JOB_ID
@@ -23,7 +23,7 @@ do
         for lear_r in $3
         do
             echo "RUNNING RAND: HID_SIZE $h_size TREE_DEPTH $tree_depth LR $lear_r"
-            python ~/home/repo/code/src/run.py --datafolder ~/home/repo/data --logfolder /burg/home/jl6181/home/scratch/logs/ --noise_level 50 --max_tree_depth $tree_depth --gpu 1 --dataset synth --input_size 200 --batch_size_train 8 --batch_size_test 1000 --p_flip 0.1 --p_noise 0.02 --max_epochs 1000 --nb_folds 3 --num_workers 4 --mode rand --eval_freq 1 --job_id $SLURM_JOB_ID --hidden_size $h_size --lr $lear_r --early_stop
+            python ~/home/repo/code/src/run.py --datafolder ~/home/repo/data --logfolder /burg/home/jl6181/home/scratch/logs/ --noise_level 50 --max_tree_depth $tree_depth --gpu 1 --dataset synth --input_size 200 --batch_size_train 2 --batch_size_test 1000 --p_flip 0.1 --p_noise 0.02 --max_epochs 20 --nb_folds 10 --num_workers 4 --mode rand --eval_freq 1 --job_id $SLURM_JOB_ID --hidden_size $h_size --lr $lear_r --early_stop
         done
     done
 done

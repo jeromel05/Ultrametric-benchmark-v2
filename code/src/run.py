@@ -64,8 +64,11 @@ def run():
     parser.add_argument('--no_reshuffle', action='store_true', help="true means eval only at one point")
     parser.add_argument('--save_ckpt', action='store_true', default=False, help="define level of verbosity")
     parser.add_argument('--last_val_step', type=int, default=0, help="define level of verbosity")
-    parser.add_argument('--s_len', type=int, default=500, help="block lenght for split protocol")
+    parser.add_argument('--s_len', type=int, default=400, help="block lenght for split protocol")
     parser.add_argument('--val_step', type=int, default=100, help="Determines steps btw validations")
+    parser.add_argument('--keep_correlations', action='store_true', help="true means eval only at one point")
+    parser.add_argument('--stoch_s_len', action='store_true', help="true means eval only at one point")
+    parser.add_argument('--ckpt_path', type=str, default='', help="Folder where ckpt to load is saved, format: 2625266_2106_1212_synth_split_b0_d6_s600_h120_lr1.0_rep17/fold_17/epoch=00_val_acc=0.0328.ckpt")
 
 
     args = parser.parse_args()
@@ -97,7 +100,7 @@ def run():
         torch.manual_seed(seed)
         np.random.seed(seed)
         
-        data_module = create_data_modules(args, args.dataset)
+        data_module = create_data_modules(args)
         print(f'{bcolors.OKCYAN}Running mode: {args.mode} seed: {seed} {bcolors.ENDC}')
         callbacks, checkpoint_callback = def_callbacks(args, logs_path, seed)
 
@@ -112,7 +115,7 @@ def run():
             data_module.set_markov_chain(args, seed)
             val_check_interval=1
         elif args.mode == 'split':
-            data_module.set_split_chain()
+            data_module.set_split_chain(args.stoch_s_len)
             val_check_interval=1
         elif args.mode == 'rand':
             val_check_interval=15
@@ -132,7 +135,11 @@ def run():
             if suggested_lr <= 5.0 and suggested_lr > 1e3:
                 model.hparams.lr = suggested_lr
 
-        trainer.fit(model, data_module)
+        if args.ckpt_path:
+            ckpt_path = args.ckpt_path + '.ckpt'
+            trainer.fit(model, ckpt_path=ckpt_path)
+        else:
+            trainer.fit(model, data_module)
 
         if not checkpoint_callback == None:
             best_model_path = checkpoint_callback.best_model_path
@@ -148,21 +155,21 @@ def run():
         end_time = time.time()
         print(f"{bcolors.OKGREEN}Fold {seed} computed in {(end_time-start_time)/60:.3}min {bcolors.ENDC}")
 
-def create_data_modules(args, dataset_name: str):
-        if dataset_name == 'mnist':
+def create_data_modules(args):
+        if args.dataset == 'mnist':
             data_module = MnistDataModule(data_dir=args.datafolder, mode=args.mode, 
                                     batch_size_train=args.batch_size_train, batch_size_test=args.batch_size_test,
                                     num_workers=args.num_workers, 
                                     normalization_transform=transforms.Normalize((0.1307,), (0.3081,)),  
-                                    b_len=args.b_len, no_reshuffle=args.no_reshuffle, s_len=args.s_len)
-        elif dataset_name == 'synth':
+                                    b_len=args.b_len, no_reshuffle=args.no_reshuffle, s_len=args.s_len, keep_correlations=args.keep_correlations)
+        elif args.dataset == 'synth':
             data_module = SynthDataModule(data_dir=args.datafolder, mode=args.mode, 
                                         batch_size_train=args.batch_size_train, batch_size_test=args.batch_size_test, 
                                         num_workers=args.num_workers, max_depth=args.max_tree_depth, 
                                         noise_level=args.noise_level, p_flip=args.p_flip, p_noise=args.p_noise, 
                                         leaf_length=args.input_size, normalize_data=args.normalize_data, 
                                         test_split=args.test_split, b_len=args.b_len,
-                                        no_reshuffle=args.no_reshuffle, s_len=args.s_len)
+                                        no_reshuffle=args.no_reshuffle, s_len=args.s_len, keep_correlations=args.keep_correlations)
         return data_module
 
 def find_lr(trainer, model, checkpoint_path_fold, data_module):
@@ -183,7 +190,7 @@ def def_callbacks(args, checkpoint_path, seed):
         optim_mode = 'max' if 'acc' in args.metric else 'min'
         print(f'Saving ckpt with {optim_mode} {args.metric}')
         checkpoint_callback = ModelCheckpoint(monitor=args.metric, dirpath=checkpoint_path_fold,
-                                        filename="{epoch:02d}_{val_loss:.2f}",
+                                        filename="{epoch:02d}_{val_acc:.4f}",
                                         save_top_k=1, mode=optim_mode)
         callbacks.append(checkpoint_callback)
 
@@ -217,8 +224,14 @@ def def_logs_path(args):
         s_len_str = ''
     elif args.mode == 'split':
         s_len_str = f'_s{args.s_len}'
+        if args.stoch_s_len:
+            s_len_str = '_stoch' + s_len_str[1:]
+    corr_string = ''
+    if args.keep_correlations:
+        corr_string = 'spacecorr'
 
-    ckpt_name = f"{args.job_id}_{dt_string}_{args.dataset}_{args.mode}_b{args.b_len}{tree_depth_str}{s_len_str}_h{args.hidden_size}_lr{args.lr}_rep{args.start_seed}/"
+
+    ckpt_name = f"{args.job_id}_{dt_string}_{args.dataset}{corr_string}_{args.mode}_b{args.b_len}{tree_depth_str}{s_len_str}_h{args.hidden_size}_lr{args.lr}_rep{args.start_seed}/"
     logs_path = os.path.join(args.logfolder, ckpt_name)
     print(f"Saving logs at: {logs_path}")
     return logs_path

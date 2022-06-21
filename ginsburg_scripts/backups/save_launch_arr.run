@@ -1,0 +1,41 @@
+#!/bin/sh
+#SBATCH --account=theory
+#SBATCH --job-name=launch_arr
+#SBATCH -c 1
+#SBATCH --time=00:5:00
+#SBATCH --error="/burg/home/jl6181/home/scratch/stderr/%j_err.out"
+#SBATCH --output="/burg/home/jl6181/home/scratch/%j.out"
+#SBATCH --partition=short
+
+echo "JOB_ID" 
+echo $SLURM_JOB_ID
+
+for h_size in $1
+do
+    for b_len in $2
+    do
+        for tree_depth in $3
+        do
+            for lear_r in $4
+            do
+                for start_seed in $5
+                do
+                    echo "RUNNING HID_SIZE $h_size B_LEN $b_len TREE_DEPTH $tree_depth LR $lear_r SEED $start_seed EVAL_FREQ $6 FACTOR $7 MODE $8"
+		    if [ $8 == "um" ]; then
+			s_len=0
+		    elif [ $8 == "split" ]; then
+			s_len=$9
+		    fi
+                    sbatch --job-name=$8.h$h_size.b$b_len.d$tree_depth.lr$lear_r.rep$start_seed um_arr.run -h $h_size -b $b_len -d $tree_depth -l $lear_r -s $start_seed -e $6 -f $7 -a 0 -g $8 -c $s_len
+                    if [ $tree_depth -gt 10 ] && [ $b_len -gt 0 ] && [ $8 == "um" ]
+                    then
+                        echo "PART TWO"
+                        sbatch --job-name=h$h_size.b$b_len.d$tree_depth.lr$lear_r.rep$start_seed.part2 um_arr.run -h $h_size -b $b_len -d $tree_depth -l $lear_r -s $start_seed -e $((10*$6)) -f 1.25 -a 40000
+                    fi
+                done
+            done
+        done
+    done
+done
+
+echo "DONE"

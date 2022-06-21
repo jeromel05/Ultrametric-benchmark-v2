@@ -1,18 +1,26 @@
 #!/bin/sh
 #SBATCH --account=theory
 #SBATCH -c 4
-#SBATCH --time=12:00:00
+#SBATCH --time=11:55:00
 #SBATCH --gres gpu:1
 #SBATCH --mail-type=FAIL
 #SBATCH --mail-user=jl6181@columbia.edu
 #SBATCH --error="/burg/home/jl6181/home/scratch/stderr/%j_err.out"
 #SBATCH --output="/burg/home/jl6181/home/scratch/%j.out"
 
+module load cuda11.0/toolkit/11.0.3 cuda11.0/blas/11.0.3 cudnn8.0-cuda11.0/8.0.5.39
+
 echo "JOB_ID"
 echo $SLURM_JOB_ID
 start=`date +%s`
 
-while getopts h:b:d:l:s:e:f:a:g: flag
+mode="um"
+s_len=0
+ckpt_path=""
+keep_correlations=false
+stoch_s_len=false
+
+while getopts h:b:d:l:s:e:f:g:c:i:j:k: flag
 do
     case "${flag}" in
         h) h_size=${OPTARG};;
@@ -22,13 +30,20 @@ do
         s) start_seed=${OPTARG};;
         e) eval_freq=${OPTARG};;
 	f) ef_factor=${OPTARG};;
-        a) start_step=${OPTARG};;
         g) mode=${OPTARG};;
+        c) s_len=${OPTARG};;
+        i) ckpt_path=${OPTARG};;
+        j) keep_correlations=${OPTARG};;
+	k) stoch_s_len=${OPTARG};;
     esac
 done
 
-echo "RUNNING UM: HID_SIZE $h_size B_LEN $b_len TREE_DEPTH $tree_depth LR $lr SEED $start_seed EF $eval_freq EF_F $ef_factor MODE $mode"
-python ~/home/repo/code/src/run.py --datafolder ~/home/repo/data --logfolder /burg/home/jl6181/home/scratch/logs/ --noise_level 50 --max_tree_depth $tree_depth --gpu 1 --dataset synth --input_size 200 --batch_size_train 8 --batch_size_test 1000 --p_flip 0.1 --p_noise 0.02 --max_epochs 10000 --nb_folds 1 --num_workers 4 --mode $mode --b_len $b_len --eval_freq $eval_freq --hidden_size $h_size --lr $lr --early_stop --job_id $SLURM_JOB_ID --start_seed $start_seed --eval_freq_factor $ef_factor --last_val_step $start_step
+echo "RUNNING: HID_SIZE $h_size B_LEN $b_len TREE_DEPTH $tree_depth LR $lr SEED $start_seed EF $eval_freq EF_F $ef_factor MODE $mode S_LEN $s_len KEEP_CORR $keep_correlations STOCH_S_LEN $stoch_s_len"
+if [ ${#ckpt_path} -gt 1 ];
+then
+    echo "RESUMING FROM $ckpt_path"
+fi
+python ~/home/repo/code/src/run.py --datafolder ~/home/repo/data --logfolder /burg/home/jl6181/home/scratch/logs/ --noise_level 50 --max_tree_depth "$tree_depth" --gpu 1 --dataset synth --input_size 200 --batch_size_train 2 --batch_size_test 1000 --p_flip 0.1 --p_noise 0.02 --max_epochs 10000 --nb_folds 1 --num_workers 4 --mode "$mode" --b_len "$b_len" --eval_freq "$eval_freq" --hidden_size "$h_size" --lr "$lr" --early_stop --job_id "$SLURM_JOB_ID" --start_seed "$start_seed" --eval_freq_factor "$ef_factor" --s_len "$s_len" --save_ckpt --ckpt_path "$ckpt_path" --keep_correlations --stoch_s_len
 
 end=`date +%s`
 runtime=$((end-start))

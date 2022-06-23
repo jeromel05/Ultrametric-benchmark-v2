@@ -14,8 +14,9 @@ from util_functions import make_confusion_matrix_figure, make_roc_curves_figure
 
 class FFNetwork(pl.LightningModule):
     def __init__(self, input_size, hidden_size, nb_classes, mode, optimizer, lr, lr_scheduler, 
-                 b_len, eval_freq, eval_freq_factor, no_reshuffle, batch_size,  s_len, last_val_step=0,
-                 val_step=100):
+                 b_len, eval_freq, eval_freq_factor, no_reshuffle, batch_size,  s_len, depth, 
+                 seed, keep_correlations, stoch_s_len, last_val_step=0, val_step=100):
+
         super().__init__()
         self.input_size = input_size
         self.hidden_size = hidden_size
@@ -28,8 +29,6 @@ class FFNetwork(pl.LightningModule):
 
         self.run_val=True
         self.last_val_step=last_val_step
-        self.last_val_epoch=0
-        self.curr_val_epoch=0
         self.curr_val_step=last_val_step
         self.curr_reset_step=last_val_step
         self.init_eval_freq = eval_freq
@@ -42,9 +41,6 @@ class FFNetwork(pl.LightningModule):
         if mode == 'split':
             self.max_eval_freq = 25000
 
-        self.val_accs = []
-        self.val_steps = []
-        self.has_converged = False
         self.reset_network=False
 
         self.save_hyperparameters()
@@ -163,18 +159,15 @@ class FFNetwork(pl.LightningModule):
                                                                 target, num_classes, compute_cf_mat=False,
                                                                 cm_figure=False, roc_figure=False)
             
-            self.val_accs.append(val_acc)
             self.log('val_acc', val_acc)
             #self.log('val_ap', val_ap)
             #self.log('val_auroc', val_auroc)
             if self.trainer.global_step > 0:
                 self.set_curr_steps_epochs(is_reset=self.reset_network)
-            self.log('val_epoch', float(self.curr_val_epoch))
-            self.val_steps.append(float(self.curr_val_step))
             self.log('val_step', float(self.curr_val_step))
             self.trainer.logger.save() # flushes to logger
 
-            print(f"Val epoch: {self.curr_val_epoch}, step: {self.curr_val_step}, tot_step: {self.trainer.global_step}, loss: {loss:.3}, acc: {val_acc:.3}")
+            print(f"Val step: {self.curr_val_step}, tot_step: {self.trainer.global_step}, loss: {loss:.3}, acc: {val_acc:.3}")
             
             if not val_cf_mat == None:
                 self.log_figures(num_classes, val_cf_mat, val_roc_curve)
@@ -257,5 +250,5 @@ class FFNetwork(pl.LightningModule):
             if is_reset:                # only in the case of a reset are these params updates, bc they are in cond_b_len
                 self.curr_reset_step -= self.last_val_step
                 self.last_val_step = self.trainer.global_step
-            assert(self.curr_val_epoch >= 0 and self.curr_val_step >= 0)
+            assert(self.curr_val_step >= 0)
 

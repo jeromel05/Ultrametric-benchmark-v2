@@ -68,8 +68,7 @@ def run():
     parser.add_argument('--val_step', type=int, default=100, help="Determines steps btw validations")
     parser.add_argument('--keep_correlations', action='store_true', help="true means eval only at one point")
     parser.add_argument('--stoch_s_len', action='store_true', help="true means eval only at one point")
-    parser.add_argument('--ckpt_path', type=str, default='', help="Folder where ckpt to load is saved, format: 2625266_2106_1212_synth_split_b0_d6_s600_h120_lr1.0_rep17/fold_17/epoch=00_val_acc=0.0328.ckpt")
-
+    parser.add_argument('--ckpt_path', type=str, default='', help="Folder where ckpt to load is saved")
 
     args = parser.parse_args()
     print("All args: ", args)
@@ -100,8 +99,7 @@ def run():
         torch.manual_seed(seed)
         np.random.seed(seed)
         
-        if len(args.ckpt_path) == 0:
-            data_module = create_data_modules(args)
+        
         print(f'{bcolors.OKCYAN}Running mode: {args.mode} seed: {seed} {bcolors.ENDC}')
         callbacks, checkpoint_callback = def_callbacks(args, logs_path, seed)
 
@@ -109,9 +107,10 @@ def run():
                         mode=args.mode, optimizer=args.optimizer, lr=args.lr, lr_scheduler=args.lr_scheduler,
                         b_len=args.b_len, eval_freq=eval_freq, eval_freq_factor=args.eval_freq_factor,
                         no_reshuffle=args.no_reshuffle, batch_size=args.batch_size_train, s_len=args.s_len, 
-                        last_val_step=args.last_val_step, val_step=val_step)
+                        depth=args.max_tree_depth, seed=args.seed, keep_correlations=args.keep_correlations, 
+                        stoch_s_len=args.stoch_s_len, last_val_step=args.last_val_step, val_step=val_step)
         
-        logger = TensorBoardLogger(logs_path, name=f"metrics", version=f"fold_{seed}")
+        data_module = create_data_modules(args)
         if args.mode == 'um':
             data_module.set_markov_chain(args, seed)
             val_check_interval=1
@@ -121,15 +120,14 @@ def run():
         elif args.mode == 'rand':
             val_check_interval=15
 
-        if len(args.ckpt_path) == 0: 
-            trainer = pl.Trainer(default_root_dir=logs_path, gpus=args.gpu, 
-                            num_nodes=1, precision=32, logger=logger, max_epochs=args.max_epochs,
-                            callbacks=callbacks,
-                            check_val_every_n_epoch=1, 
-                            val_check_interval=val_check_interval,
-                            enable_checkpointing=args.save_ckpt)
-        else:
-            trainer = pl.Trainer() # Naive Trainer to use with loaded ckpt
+        
+        logger = TensorBoardLogger(logs_path, name=f"metrics", version=f"fold_{seed}")
+        trainer = pl.Trainer(default_root_dir=logs_path, gpus=args.gpu, 
+                        num_nodes=1, precision=32, logger=logger, max_epochs=args.max_epochs,
+                        callbacks=callbacks,
+                        check_val_every_n_epoch=1, 
+                        val_check_interval=val_check_interval,
+                        enable_checkpointing=args.save_ckpt)
         
         if args.auto_lr_find:
             print("Fitting lr...")
@@ -142,7 +140,8 @@ def run():
             ckpt_path = args.ckpt_path
             if not ckpt_path.endswith('.ckpt'):
                 ckpt_path = args.ckpt_path + '.ckpt'
-            trainer.fit(model, ckpt_path=ckpt_path)
+            print(f'@trainer.fit {ckpt_path}')
+            trainer.fit(model, data_module, ckpt_path=ckpt_path)
         else:
             trainer.fit(model, data_module)
 
@@ -195,7 +194,7 @@ def def_callbacks(args, checkpoint_path, seed):
         optim_mode = 'max' if 'acc' in args.metric else 'min'
         print(f'Saving ckpt with {optim_mode} {args.metric}')
         checkpoint_callback = ModelCheckpoint(monitor=args.metric, dirpath=checkpoint_path_fold,
-                                        filename="{epoch:02d}_{val_acc:.4f}",
+                                        filename="{step}_{val_acc:.4f}",
                                         save_top_k=1, mode=optim_mode)
         callbacks.append(checkpoint_callback)
 
@@ -233,10 +232,12 @@ def def_logs_path(args):
             s_len_str = '_stoch' + s_len_str[1:]
     corr_string = ''
     if args.keep_correlations:
-        corr_string = 'spacecorr'
+        corr_string = 'corr'
+    ckpt_str = ''    
+    if len(args.ckpt_path) > 5:
+        ckpt_str = args.ckpt_path[:6]
 
-
-    ckpt_name = f"{args.job_id}_{dt_string}_{args.dataset}{corr_string}_{args.mode}_b{args.b_len}{tree_depth_str}{s_len_str}_h{args.hidden_size}_lr{args.lr}_rep{args.start_seed}/"
+    ckpt_name = f"{args.job_id}_{dt_string}_{args.dataset}{corr_string}{ckpt_str}_{args.mode}_b{args.b_len}{tree_depth_str}{s_len_str}_h{args.hidden_size}_lr{args.lr}_rep{args.start_seed}/"
     logs_path = os.path.join(args.logfolder, ckpt_name)
     print(f"Saving logs at: {logs_path}")
     return logs_path

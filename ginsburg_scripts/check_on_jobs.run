@@ -1,0 +1,9 @@
+#!/bin/sh
+
+ssh jl6181@ginsburg.rcs.columbia.edu
+conda activate env1
+cd home/repo/code/scripts/
+
+sbatch get_jobs_satus_and_relaunch.run
+
+exit

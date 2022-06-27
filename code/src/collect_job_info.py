@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 curr_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, join(curr_path,"../utils/"))
+from util_functions import bcolors, find_best_ckpt
 
 from datetime import datetime
 import time
@@ -39,9 +40,9 @@ def run():
     log_out_files_dict = construct_log_out_files_dict(all_logdirs, all_outfiles, list_jobs_to_analyse)
 
     if(os.path.isfile(args.job_info_csv)):
-        job_info_df = pd.read_csv(args.job_info_csv)
+        job_info_df = pd.read_csv(args.job_info_csv, index_col='idx')
     else:
-        job_info_df = pd.DataFrame()
+        job_info_df = pd.Series(np.zeros(len(list_jobs_to_analyse)), index=list_jobs_to_analyse)
 
     results_dict = dict() #pd.DataFrame(index=['job_id'], columns=[['best_acc', 'best_loss', 'best_step', 'log_path', 'hash']])
     failed_jobs_list = []
@@ -87,9 +88,6 @@ def run():
     results_df = pd.DataFrame({'metrics': [el[0] for el in results_dict.values()], 'log_path': [el[1] for el in results_dict.values()],
                                 'hash': [el[2] for el in results_dict.values()]}, index=[el for el in results_dict.keys()])
 
-    # Merges loaded job info df and results df, 
-    pd.join()
-
     results_df = pd.concat([results_df.drop(['metrics'], axis=1), results_df['metrics'].apply(pd.Series)], axis=1).copy()
     if 'epoch' in results_df.columns:
         results_df['epoch'] = results_df['epoch'].astype(int)
@@ -109,47 +107,58 @@ def run():
                 curr_running_job_ids.append(job_id)
     
 
-    jobs_to_relaunch_df.loc[:, 'curr_running'] = np.zeros(jobs_to_relaunch_df.shape[0])
-    jobs_to_relaunch_df.loc[curr_running_job_ids,'curr_running'] = 1
-    jobs_to_relaunch_df.loc[:, 'relaunched_counter'] = np.zeros(jobs_to_relaunch_df.shape[0])
-    jobs_to_relaunch_df.loc[jobs_to_relaunch_df['step'] > 110000, 'relaunched_counter']= 1
+    jobs_to_relaunch_df.drop(index=curr_running_job_ids, axis=0) # drop currently running jobs
+    jobs_to_relaunch_df.loc[:, 'relaunched_counter'] = 0
+    common_idx = list(np.intersect1d(jobs_to_relaunch_df.index, job_info_df.index))
+    if len(common_idx) > 0:
+        jobs_to_relaunch_df.loc[common_idx, 'relaunched_counter'] = job_info_df.get(common_idx)
+    ####
+    job_info_df.loc[jobs_to_relaunch_df.index] += 1
 
-    jobs_to_relaunch_df = jobs_to_relaunch_df.loc[(jobs_to_relaunch_df['curr_running'] == 0) & (jobs_to_relaunch_df['relaunched_counter'] == 0)]
     jobs_to_relaunch_df['hparams'] = jobs_to_relaunch_df['log_path'].apply(get_hparams_from_file)
     jobs_to_relaunch_df = pd.concat([jobs_to_relaunch_df.drop(['hparams'], axis=1), jobs_to_relaunch_df['hparams'].apply(pd.Series)], axis=1)
     print(jobs_to_relaunch_df.head(2))
-    print(jobs_to_relaunch_df.columns)
+    #print(jobs_to_relaunch_df.columns)
 
     sbatch_relaunch_commands = []
-    for index, row in jobs_to_relaunch_df.iterrows():
-        print(row)
-        ckpt_path = '/burg/home/jl6181/home/scratch/logs/2626672_2106_1905_synth_um_b0_d5_h60_lr2.0_rep17/fold_17/step\=2709_val_acc\=0.7969.ckpt'
+    for job_id, row in jobs_to_relaunch_df.iterrows():
+        #print(row)
+        ### STILL HAVE TO FIND CKPT_PATH AND REP#
+
+        #ckpt_path = '/burg/home/jl6181/home/scratch/logs/2626672_2106_1905_synth_um_b0_d5_h60_lr2.0_rep17/fold_17/step\=2709_val_acc\=0.7969.ckpt'
+        log_path = row['log_path']
+
+        rep_nb = find_rep_nb(log_path)
+        ckpt_dir = join(log_path, f'fold_{rep_nb}')
+        ckpt_path = join(ckpt_dir, find_best_ckpt(ckpt_dir))
         eval_freq = row['eval_freq']
-        eval_freq_factor = row['eval_freq_factor']
+        ef_factor = row['eval_freq_factor']
         mode = row['mode']
         hidden_size = row['hidden_size']
         b_len = row['b_len']
         lr = row['lr']
-        hidden_size = row['hidden_size']
-        depth = row['depth']
+        h_size = row['hidden_size']
+        tree_depth = row['depth']
         s_len = row['s_len']
         keep_correlations = row['keep_correlations']
         stoch_s_len = row['stoch_s_len']
-        rep_nb = int(re.search('rep([0-9]+)', ckpt_path).group(1))
 
-        sbatch_command = f'sbatch launch_arr.run -e {eval_freq} -f {eval_freq_factor} -m {mode} -c {ckpt_path} -s {s_len} -k {keep_correlations} -l {stoch_s_len} "{hidden_size}" "{b_len}" "{depth}" "{lr}" "{rep_nb}"'
-        #sbatch launch_arr.run -e 1000 -f 1.7 -m "um" -c "/burg/home/jl6181/home/scratch/logs/2626672_2106_1905_synth_um_b0_d5_h60_lr2.0_rep17/fold_17/step\=2709_val_acc\=0.7969.ckpt" "60" "0" "5" "2.0" "17"
+        sbatch_command = f'sbatch --job-name={mode}.h{h_size}.b{b_len}.d{tree_depth}.lr{lr}.rep{rep_nb} um_arr.run -h {h_size} -b {b_len} -d {tree_depth} -l {lr} -s {rep_nb} -e {eval_freq} -f {ef_factor} -g {mode} -c {s_len} -i {ckpt_path} -j {keep_correlations} -k {stoch_s_len}'
         sbatch_relaunch_commands.append(sbatch_command)
 
-    print('DONE')
-    print(sbatch_relaunch_commands)
-    return sbatch_relaunch_commands
+    job_info_df.to_csv(args.job_info_csv)
+    print(f'Found {len(sbatch_relaunch_commands)} jobs to relaunch') 
+
+    with open('./sbatch_relaunch_commands.txt', 'w') as outfile:
+        outfile.write("\n".join(sbatch_relaunch_commands))
+
+    print(f'DONE') 
         
 
 def get_hash(ckpt_name):
     if '/' in ckpt_name:
         ckpt_name = ckpt_name[ckpt_name.rfind('/'):]
-    patt = "[./]*(?:merged_)*([0-9]+)_([0-9]+)_[0-9]+_[a-z]+_((?:um|rand|split)_b[0-9]+_*(d[0-9]+)*_*(s[0-9]*)*_+h[0-9]+_lr[0-9.]+_rep[0-9]+)"
+    patt = '[./]*([0-9]{7})_([0-9]{4})_[0-9]{4}_((?:synth|mnist)(?:corr)*_(?:um|rand|split)_b[0-9]+_(d[0-9]+)_*(?:stoch)*(s[0-9]*)*_h[0-9]+_lr[0-9.]+_rep[0-9]+)'
     matched = re.match(patt, ckpt_name)
     if matched:
         hash1 = matched.group(3) # create hash
@@ -183,8 +192,16 @@ def get_hparams_from_file(log_path):
                 print(exc)
     else:
         print(f'hparams.yaml file not found {hparams_path}')
-    print('hparams_dict', hparams_dict)
+    #print('hparams_dict', hparams_dict)
     return hparams_dict
+
+def find_rep_nb(log_path):
+    ckpt_dirs = os.listdir(log_path)
+    for ckpt_dir in ckpt_dirs:
+        if 'fold' in ckpt_dir:
+            rep_nb = int(re.search('fold_([0-9]+)', ckpt_dir).group(1))
+            break
+    return rep_nb
 
 if __name__ == '__main__':
     run()

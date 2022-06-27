@@ -7,7 +7,7 @@ import re
 curr_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, join(curr_path,"../data/"))
 sys.path.insert(0, join(curr_path,"../utils/"))
-from util_functions import bcolors
+from util_functions import bcolors, find_best_ckpt
 
 from datetime import datetime
 import time
@@ -259,19 +259,6 @@ def def_logs_path(args, new_logs=False):
 
     print(f"Saving logs at: {logs_path}")
     return logs_path
-
-def find_best_ckpt(ckpt_dir):
-    best_acc = 0.0
-    best_ckpt = None
-    candidate_ckpts = os.listdir(ckpt_dir)
-    for cd_ckpt in candidate_ckpts:
-        matched = re.search('val_acc[=\\ ]*([0-9]+.[0-9]+)', cd_ckpt)
-        if matched:
-            cd_acc = float(matched.group(1))
-            if cd_acc > best_acc:
-                best_acc = cd_acc
-                best_ckpt = cd_ckpt
-    return best_ckpt
 
 if __name__ == '__main__':
     run()

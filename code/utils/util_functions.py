@@ -1,3 +1,5 @@
+import os
+import re
 import numpy as np
 import torch
 import io
@@ -85,3 +87,21 @@ def print_metrics(acc, ap, auroc_, cf_mat, roc_curve, seed=0, do_print=False, sa
     if save_figs:
         cf_mat.savefig(f"../../plots/best_val_cf_mat_seed_{seed}.jpg", dpi=250)
         roc_curve.savefig(f"../../plots/best_val_roc_curve_seed_{seed}.jpg", dpi=250)
+
+def find_best_ckpt(ckpt_dir, mode='recent'):
+    best_val = 0
+    best_ckpt = None
+    candidate_ckpts = os.listdir(ckpt_dir)
+    for cd_ckpt in candidate_ckpts:
+        if mode == 'recent':
+            matched = re.search('step[=\\ ]*([0-9]+)', cd_ckpt)
+        elif mode == 'best':
+            matched = re.search('val_acc[=\\ ]*([0-9]+.[0-9]+)', cd_ckpt)
+        else:
+            matched = False
+        if matched:
+            cd_val = float(matched.group(1))
+            if cd_val > best_val:
+                best_val = cd_val
+                best_ckpt = cd_ckpt
+    return best_ckpt

@@ -3,6 +3,7 @@ import os, sys
 from os.path import join
 
 import numpy as np
+import re
 curr_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, join(curr_path,"../data/"))
 sys.path.insert(0, join(curr_path,"../utils/"))
@@ -107,7 +108,7 @@ def run():
                         mode=args.mode, optimizer=args.optimizer, lr=args.lr, lr_scheduler=args.lr_scheduler,
                         b_len=args.b_len, eval_freq=eval_freq, eval_freq_factor=args.eval_freq_factor,
                         no_reshuffle=args.no_reshuffle, batch_size=args.batch_size_train, s_len=args.s_len, 
-                        depth=args.max_tree_depth, seed=args.seed, keep_correlations=args.keep_correlations, 
+                        depth=args.max_tree_depth, keep_correlations=args.keep_correlations, 
                         stoch_s_len=args.stoch_s_len, last_val_step=args.last_val_step, val_step=val_step)
         
         data_module = create_data_modules(args)
@@ -140,7 +141,13 @@ def run():
             ckpt_path = args.ckpt_path
             if not ckpt_path.endswith('.ckpt'):
                 ckpt_path = args.ckpt_path + '.ckpt'
-            print(f'@trainer.fit {ckpt_path}')
+
+            if not os.path.isfile(ckpt_path):
+                ckpt_dir = join(logs_path, f'fold_{seed}')
+                assert(os.path.isdir(ckpt_dir) and len(os.listdir(ckpt_dir)) > 0)
+                ckpt_path = join(ckpt_dir, find_best_ckpt(ckpt_dir))
+
+            print(f'@trainer.fit {ckpt_path}, {os.path.isfile(ckpt_path)}')
             trainer.fit(model, data_module, ckpt_path=ckpt_path)
         else:
             trainer.fit(model, data_module)
@@ -217,30 +224,54 @@ def def_callbacks(args, checkpoint_path, seed):
     
     return callbacks, checkpoint_callback
 
-def def_logs_path(args):
-    now = datetime.now()
-    dt_string = now.strftime("%d%m_%H%M")
-    if args.dataset == 'mnist':
-        tree_depth_str = ''
-    elif args.dataset == 'synth':
-        tree_depth_str = f'_d{args.max_tree_depth}'
-    if args.mode == 'um':
-        s_len_str = ''
-    elif args.mode == 'split':
-        s_len_str = f'_s{args.s_len}'
-        if args.stoch_s_len:
-            s_len_str = '_stoch' + s_len_str[1:]
-    corr_string = ''
-    if args.keep_correlations:
-        corr_string = 'corr'
-    ckpt_str = ''    
-    if len(args.ckpt_path) > 5:
-        ckpt_str = args.ckpt_path[:6]
+def def_logs_path(args, new_logs=False):
+    if new_logs or len(args.ckpt_path) == 0:
+        now = datetime.now()
+        dt_string = now.strftime("%d%m_%H%M")
+        if args.dataset == 'mnist':
+            tree_depth_str = ''
+        elif args.dataset == 'synth':
+            tree_depth_str = f'_d{args.max_tree_depth}'
+        if args.mode == 'um':
+            s_len_str = ''
+        elif args.mode == 'split':
+            s_len_str = f'_s{args.s_len}'
+            if args.stoch_s_len:
+                s_len_str = '_stoch' + s_len_str[1:]
+        corr_string = ''
+        if args.keep_correlations:
+            corr_string = 'corr'
+        ckpt_str = ''    
 
-    ckpt_name = f"{args.job_id}_{dt_string}_{args.dataset}{corr_string}{ckpt_str}_{args.mode}_b{args.b_len}{tree_depth_str}{s_len_str}_h{args.hidden_size}_lr{args.lr}_rep{args.start_seed}/"
-    logs_path = os.path.join(args.logfolder, ckpt_name)
+        ckpt_name = f"{args.job_id}_{dt_string}_{args.dataset}{corr_string}{ckpt_str}_{args.mode}_b{args.b_len}{tree_depth_str}{s_len_str}_h{args.hidden_size}_lr{args.lr}_rep{args.start_seed}/"
+        logs_path = os.path.join(args.logfolder, ckpt_name)
+
+    else:
+        matched = re.search('(2[0-9]{6}_([0-9]{4}_){2}(?:synth|mnist)_(?:um|split|rand)_[a-z0-9._]+_rep[0-9]+)', args.ckpt_path)
+        if matched:
+            logs_name = matched.group(1)
+            logs_path = os.path.join(args.logfolder, logs_name)
+        else:
+            print('Old logs not found, creating new log folder')
+            def_logs_path(args, new_logs=True)
+        print(logs_path)
+        assert(os.path.isdir(logs_path))
+
     print(f"Saving logs at: {logs_path}")
     return logs_path
+
+def find_best_ckpt(ckpt_dir):
+    best_acc = 0.0
+    best_ckpt = None
+    candidate_ckpts = os.listdir(ckpt_dir)
+    for cd_ckpt in candidate_ckpts:
+        matched = re.search('val_acc[=\\ ]*([0-9]+.[0-9]+)', cd_ckpt)
+        if matched:
+            cd_acc = float(matched.group(1))
+            if cd_acc > best_acc:
+                best_acc = cd_acc
+                best_ckpt = cd_ckpt
+    return best_ckpt
 
 if __name__ == '__main__':
     run()

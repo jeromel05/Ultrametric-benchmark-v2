@@ -2,7 +2,6 @@ import argparse
 import os, sys
 from os.path import join
 import csv
-from black import Depth
 import yaml
 import re
 
@@ -23,6 +22,7 @@ def run():
     parser = argparse.ArgumentParser()
     parser.add_argument('--logfolder', type=str, default='../../../scratch/logs/', help="Folder to save the data")
     parser.add_argument('--outfolder', type=str, default='../../../scratch/', help="Folder to save the .out files")
+    parser.add_argument('--job_info_csv', type=str, default='../../../scratch/job_info.csv', help="Folder to save the .out files")
     parser.add_argument('-j','--job_range', nargs='+', help='range of job_ids to analyse', required=True)
 
     args = parser.parse_args()
@@ -37,6 +37,11 @@ def run():
     all_logdirs = sorted(os.listdir(logfolder))
     all_outfiles = sorted(os.listdir(outfolder))
     log_out_files_dict = construct_log_out_files_dict(all_logdirs, all_outfiles, list_jobs_to_analyse)
+
+    if(os.path.isfile(args.job_info_csv)):
+        job_info_df = pd.read_csv(args.job_info_csv)
+    else:
+        job_info_df = pd.DataFrame()
 
     results_dict = dict() #pd.DataFrame(index=['job_id'], columns=[['best_acc', 'best_loss', 'best_step', 'log_path', 'hash']])
     failed_jobs_list = []
@@ -65,6 +70,7 @@ def run():
                             key1 = matched_key_value.group(1)
                             value1 = float(matched_key_value.group(2))
                             metric_dict[key1] = value1
+                        break
                         
             if len(metric_dict) == 0:
                 print(f'ERROR: job {job_id} has failed to run')
@@ -74,8 +80,15 @@ def run():
             results_dict[job_id] = [metric_dict, log_path, hash1]
         
     print(f'Out of {len(list_jobs_to_analyse)} logs to analyse, {len(results_dict)} logs were collected , {len(failed_jobs_list)} failed completely')
+    if len(results_dict) == 0:
+        print('No logs found to analyse: exiting')
+        sys.exit()
+
     results_df = pd.DataFrame({'metrics': [el[0] for el in results_dict.values()], 'log_path': [el[1] for el in results_dict.values()],
                                 'hash': [el[2] for el in results_dict.values()]}, index=[el for el in results_dict.keys()])
+
+    # Merges loaded job info df and results df, 
+    pd.join()
 
     results_df = pd.concat([results_df.drop(['metrics'], axis=1), results_df['metrics'].apply(pd.Series)], axis=1).copy()
     if 'epoch' in results_df.columns:
@@ -108,8 +121,8 @@ def run():
     print(jobs_to_relaunch_df.columns)
 
     sbatch_relaunch_commands = []
-    for row in jobs_to_relaunch_df:
-
+    for index, row in jobs_to_relaunch_df.iterrows():
+        print(row)
         ckpt_path = '/burg/home/jl6181/home/scratch/logs/2626672_2106_1905_synth_um_b0_d5_h60_lr2.0_rep17/fold_17/step\=2709_val_acc\=0.7969.ckpt'
         eval_freq = row['eval_freq']
         eval_freq_factor = row['eval_freq_factor']
@@ -119,14 +132,18 @@ def run():
         lr = row['lr']
         hidden_size = row['hidden_size']
         depth = row['depth']
-        rep_nb = row['seed']
         s_len = row['s_len']
         keep_correlations = row['keep_correlations']
         stoch_s_len = row['stoch_s_len']
+        rep_nb = int(re.search('rep([0-9]+)', ckpt_path).group(1))
 
         sbatch_command = f'sbatch launch_arr.run -e {eval_freq} -f {eval_freq_factor} -m {mode} -c {ckpt_path} -s {s_len} -k {keep_correlations} -l {stoch_s_len} "{hidden_size}" "{b_len}" "{depth}" "{lr}" "{rep_nb}"'
         #sbatch launch_arr.run -e 1000 -f 1.7 -m "um" -c "/burg/home/jl6181/home/scratch/logs/2626672_2106_1905_synth_um_b0_d5_h60_lr2.0_rep17/fold_17/step\=2709_val_acc\=0.7969.ckpt" "60" "0" "5" "2.0" "17"
         sbatch_relaunch_commands.append(sbatch_command)
+
+    print('DONE')
+    print(sbatch_relaunch_commands)
+    return sbatch_relaunch_commands
         
 
 def get_hash(ckpt_name):
@@ -166,7 +183,7 @@ def get_hparams_from_file(log_path):
                 print(exc)
     else:
         print(f'hparams.yaml file not found {hparams_path}')
-
+    print('hparams_dict', hparams_dict)
     return hparams_dict
 
 if __name__ == '__main__':

@@ -25,8 +25,7 @@ class SynthUltrametricTree():
         
     def bit_flip(self, curr_ancestor_seq, p_flip):
         random_seq = np.random.rand(len(curr_ancestor_seq))
-        res = [not el_res if el_rand < p_flip else el_res 
-                           for el_res, el_rand in zip(curr_ancestor_seq, random_seq)]
+        res = [not el_res if el_rand < p_flip else el_res for el_res, el_rand in zip(curr_ancestor_seq, random_seq)]
         return res
 
     def create_tree(self, ancestor_seq, curr_depth, tree_list):

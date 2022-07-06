@@ -9,13 +9,17 @@ from torch.nn import functional as F
 import torchvision
 from torchmetrics.functional import accuracy, average_precision, auroc, roc, confusion_matrix
 from torchmetrics.utilities.data import to_categorical
+import yaml
 from util_functions import bcolors
 from util_functions import make_confusion_matrix_figure, make_roc_curves_figure
+from os.path import join
+
 
 class FFNetwork(pl.LightningModule):
     def __init__(self, input_size, hidden_size, nb_classes, mode, optimizer, lr, lr_scheduler, 
-                 b_len, eval_freq, eval_freq_factor, no_reshuffle, batch_size,  s_len, depth, 
-                 keep_correlations, stoch_s_len, last_val_step=0, val_step=100):
+                 b_len, eval_freq, eval_freq_factor, no_reshuffle, batch_size_train,  s_len, max_tree_depth, 
+                 keep_correlations, stoch_s_len, val_step=100, last_val_acc=0.0, ckpt_path='',
+                 logs_path='../../logs', rep_nb=0, curr_reset_step=0):
 
         super().__init__()
         self.input_size = input_size
@@ -28,22 +32,26 @@ class FFNetwork(pl.LightningModule):
         self.criterion = self.loss_func()
 
         self.run_val=True
-        self.last_val_step=last_val_step
-        self.curr_val_step=last_val_step
-        self.curr_reset_step=last_val_step
+        self.last_val_step=0 # last step at which we evaluated before resetting (absolute units)
+        self.curr_val_step=curr_reset_step # nb steps between last val and next reset (relative units) || Also step at which we start running vals
+        self.curr_reset_step=curr_reset_step # nb steps between last reset and next reset (relative units) || Step at which we reset
         self.init_eval_freq = eval_freq
         self.curr_eval_freq = eval_freq
         self.eval_freq_factor = eval_freq_factor
-        self.last_val_acc = 0.0
-
-        if mode == 'um':
-            self.max_eval_freq = 15000
-        if mode == 'split':
-            self.max_eval_freq = 25000
+        self.last_val_acc = last_val_acc
+        self.max_eval_freq = 10000
 
         self.reset_network=False
+        self.n_runs=0
 
         self.save_hyperparameters()
+
+    def on_fit_start(self) -> None:
+        if self.n_runs < 1 and self.curr_reset_step > 0 and self.hparams.b_len > 0:
+            until_idx = self.curr_reset_step + self.curr_eval_freq
+            print(f'FIRST RUN: {bcolors.OKGREEN}Chain SHUFFLED UNTIL: : {until_idx}, curr_eval_freq: {self.curr_eval_freq}{bcolors.ENDC}')
+            self.reset_network_sampler(until_idx=until_idx)
+        return super().on_fit_start()
     
     def loss_func(self):
         return nn.BCELoss()
@@ -106,7 +114,6 @@ class FFNetwork(pl.LightningModule):
   
     def training_step(self, train_batch, batch_idx):
         x, y = train_batch
-        #print('train:', self.trainer.current_epoch, x.size(), y.size())
         num_classes = y.size(1)
         x = x.view(x.size(0), -1)
         o = self.forward(x)
@@ -114,7 +121,6 @@ class FFNetwork(pl.LightningModule):
         self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=False, logger=True)
 
         target = to_categorical(y, argmax_dim=1)
-        #print('targets: ', target)
         train_acc = accuracy(o, target, average='micro', num_classes=num_classes)
         self.log('train_acc', train_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         
@@ -126,21 +132,17 @@ class FFNetwork(pl.LightningModule):
 
         last_batch_idx = length_epoch // self.trainer.datamodule.batch_size_train
         cond_last_batch = batch_idx == last_batch_idx
-        cond_epoch_zero = (self.trainer.current_epoch==0 and batch_idx==0)
 
-        if (((self.hparams.mode == 'rand') or (self.hparams.b_len == 0 and self.trainer.current_epoch % 5==0) or self.hparams.no_reshuffle) and cond_last_batch) or cond_epoch_zero:
-            #print('batch_idx', batch_idx, last_batch_idx, len(y), list(set(target)), "aaa", target)
+        if (((self.hparams.mode == 'rand') or (self.hparams.b_len == 0 and self.trainer.current_epoch % 5==0) or self.hparams.no_reshuffle) and cond_last_batch) or self.n_runs < 2: # # 
             self.run_val=True
-        else:
+        elif self.hparams.b_len > 0 and (self.hparams.mode in ['split', 'um']) and (not self.hparams.no_reshuffle):
             cond_b_len = self.trainer.global_step >= self.curr_eval_freq + self.last_val_step + self.curr_reset_step # cond to reset dataloader to 0
             cond_start_val = self.trainer.global_step > self.last_val_step + self.curr_reset_step and (self.trainer.global_step % self.hparams.val_step == 0) # cond to start validating at every val_step
-            #print('cond_b_len', cond_b_len, 'cond_start_val', cond_start_val)
-            
-            if cond_start_val or cond_epoch_zero or cond_b_len:
-                #print((self.trainer.current_epoch == 0), (not cond_um_shuffle), cond_um_shuffle, cond_b_len, cond_last_batch)
+
+            if cond_start_val or cond_b_len:
                 self.run_val=True
             if cond_b_len:
-                if self.hparams.b_len > 0: print(f'#steps taken for this eval: {self.trainer.global_step - self.last_val_step}')
+                print(f'#steps taken for this eval: {self.trainer.global_step - self.last_val_step}')
                 self.reset_network=True
 
         return loss
@@ -162,7 +164,7 @@ class FFNetwork(pl.LightningModule):
             self.log('val_acc', val_acc)
             #self.log('val_ap', val_ap)
             #self.log('val_auroc', val_auroc)
-            if self.trainer.global_step > 0:
+            if self.n_runs > 2:
                 self.set_curr_steps_epochs(is_reset=self.reset_network)
             self.log('val_step', float(self.curr_val_step))
             self.trainer.logger.save() # flushes to logger
@@ -173,17 +175,17 @@ class FFNetwork(pl.LightningModule):
                 self.log_figures(num_classes, val_cf_mat, val_roc_curve)
 
             # Resets the network for a new run
-            if self.reset_network and (not self.hparams.no_reshuffle) and self.hparams.mode in ['um', 'split'] and self.hparams.b_len > 0:
-                until_idx=self.curr_val_step
-
-                if self.trainer.current_epoch > 0:
+            if self.reset_network and (not self.hparams.no_reshuffle) and (self.hparams.mode in ['um', 'split']) and self.hparams.b_len > 0:
+                if self.n_runs > 2:
                     self.adjust_eval_freq(val_acc)
-                
-                until_idx += self.curr_eval_freq
+
+                until_idx=self.curr_val_step + self.curr_eval_freq
                 print(f'{bcolors.OKGREEN}Chain SHUFFLED UNTIL: : {until_idx}, curr_eval_freq: {self.curr_eval_freq}{bcolors.ENDC}')
+                self.update_hparams() 
                 self.reset_network_sampler(until_idx=until_idx)
 
             self.run_val=False
+            self.n_runs +=1
             self.reset_network=False
             self.last_val_acc = val_acc
         
@@ -233,8 +235,8 @@ class FFNetwork(pl.LightningModule):
             if self.curr_eval_freq > self.max_eval_freq: # upper threshold for eval_freq, otherwise will never be reached and timeout
                 self.curr_eval_freq = self.max_eval_freq
         if self.curr_eval_freq < max(self.hparams.b_len, self.init_eval_freq): # lower bound
-            self.curr_eval_freq = max(self.hparams.b_len, self.init_eval_freq) * 2
-            self.eval_freq_factor = 1.75
+            self.curr_eval_freq = max(self.hparams.b_len, self.init_eval_freq) * 1.5
+            self.eval_freq_factor = 1.7
         if val_acc > 0.5 and self.curr_eval_freq < 1000:
                 self.curr_eval_freq = 2000
 
@@ -242,13 +244,21 @@ class FFNetwork(pl.LightningModule):
 
     def set_curr_steps_epochs(self, is_reset=False):
         self.curr_val_step = self.trainer.global_step
-        if is_reset: 
-            self.curr_reset_step = self.trainer.global_step
+        self.curr_val_step -= self.last_val_step
 
-        if self.hparams.b_len > 0 and (not self.hparams.no_reshuffle):
-            self.curr_val_step -= self.last_val_step
+        if is_reset and self.hparams.b_len > 0 and (not self.hparams.no_reshuffle):
+            self.curr_reset_step = self.trainer.global_step
             if is_reset:                # only in the case of a reset are these params updates, bc they are in cond_b_len
                 self.curr_reset_step -= self.last_val_step
                 self.last_val_step = self.trainer.global_step
             assert(self.curr_val_step >= 0)
+
+    def update_hparams(self):
+        self.hparams['curr_reset_step'] = self.curr_reset_step
+        self.hparams['eval_freq'] = self.curr_eval_freq
+        self.hparams['eval_freq_factor'] = self.eval_freq_factor
+        self.hparams['last_val_acc'] = float(self.last_val_acc.cpu())
+
+        with open(join(self.hparams.logs_path, 'metrics', f'fold_{self.hparams.rep_nb}', 'hparams.yaml'), 'w') as hparams_file:
+            _ = yaml.dump(dict(self.hparams), hparams_file)
 

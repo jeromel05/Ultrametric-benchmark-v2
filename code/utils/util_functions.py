@@ -7,6 +7,9 @@ import matplotlib.pyplot as plt
 import tensorflow as tf
 from matplotlib import cm
 import itertools
+from os.path import join
+import csv
+import yaml
 
 class bcolors:
     HEADER = '\033[95m'
@@ -88,20 +91,37 @@ def print_metrics(acc, ap, auroc_, cf_mat, roc_curve, seed=0, do_print=False, sa
         cf_mat.savefig(f"../../plots/best_val_cf_mat_seed_{seed}.jpg", dpi=250)
         roc_curve.savefig(f"../../plots/best_val_roc_curve_seed_{seed}.jpg", dpi=250)
 
-def find_best_ckpt(ckpt_dir, mode='recent'):
+def find_ckpt(ckpt_dir, mode='recent'):
     best_val = 0
-    best_ckpt = None
-    candidate_ckpts = os.listdir(ckpt_dir)
-    for cd_ckpt in candidate_ckpts:
-        if mode == 'recent':
-            matched = re.search('step[=\\ ]*([0-9]+)', cd_ckpt)
-        elif mode == 'best':
-            matched = re.search('val_acc[=\\ ]*([0-9]+.[0-9]+)', cd_ckpt)
-        else:
-            matched = False
-        if matched:
-            cd_val = float(matched.group(1))
-            if cd_val > best_val:
-                best_val = cd_val
-                best_ckpt = cd_ckpt
+    best_ckpt = ''
+    if os.path.isdir(ckpt_dir):
+        candidate_ckpts = os.listdir(ckpt_dir)
+        for cd_ckpt in candidate_ckpts:
+            if mode == 'recent':
+                matched = re.search('step[=\\ ]*([0-9]+)', cd_ckpt)
+            elif mode == 'best':
+                matched = re.search('val_acc[=\\ ]*([0-9]+.[0-9]+)', cd_ckpt)
+            else:
+                matched = False
+            if matched:
+                cd_val = float(matched.group(1))
+                if cd_val > best_val:
+                    best_val = cd_val
+                    best_ckpt = cd_ckpt
     return best_ckpt
+
+def get_hparams_from_file(log_path):
+    rep_nb = int(re.search('rep([0-9]+)', log_path).group(1))
+    hparams_path = join(log_path, 'metrics', f'fold_{rep_nb}', 'hparams.yaml')
+    hparams_dict=dict()
+    
+    if os.path.isfile(hparams_path):
+        with open(hparams_path, "r") as stream:
+            try:
+                hparams_dict=yaml.safe_load(stream)
+            except yaml.YAMLError as exc:
+                print(exc)
+    else:
+        print(f'hparams.yaml file not found {hparams_path}')
+    print('hparams_dict', hparams_dict)
+    return hparams_dict

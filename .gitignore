@@ -185,3 +185,4 @@ to_merge/
 *.4
 *.3
 *.5
+notebooks/failed_relaunch_jobs.txt

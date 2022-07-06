@@ -4,26 +4,23 @@ from os.path import join
 import csv
 import yaml
 import re
+import math
 
 import numpy as np
 import pandas as pd
 curr_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, join(curr_path,"../utils/"))
-from util_functions import bcolors, find_best_ckpt
+from util_functions import bcolors, find_ckpt, get_hparams_from_file
 
 from datetime import datetime
 import time
 
-empty_hparams = {   'b_len': 0, 'batch_size': 2, 'eval_freq': 1000, 'eval_freq_factor': 1.7,
-                    'hidden_size': 60, 'input_size': 200, 'last_val_step': 0, 'lr': 2.0,
-                    'lr_scheduler': 'null', 'mode': 'um', 'nb_classes': 32, 'no_reshuffle': False,
-                    'optimizer': 'sgd', 's_len': 0, 'val_step': 100 }
 
 def run():
     parser = argparse.ArgumentParser()
     parser.add_argument('--logfolder', type=str, default='../../../scratch/logs/', help="Folder to save the data")
     parser.add_argument('--outfolder', type=str, default='../../../scratch/', help="Folder to save the .out files")
-    parser.add_argument('--job_info_csv', type=str, default='../../../scratch/job_info.csv', help="Folder to save the .out files")
+    parser.add_argument('--nb_relaunch_csv', type=str, default='../../../scratch/nb_relaunch.csv', help="Folder to save the .out files")
     parser.add_argument('-j','--job_range', nargs='+', help='range of job_ids to analyse', required=True)
 
     args = parser.parse_args()
@@ -39,12 +36,12 @@ def run():
     all_outfiles = sorted(os.listdir(outfolder))
     log_out_files_dict = construct_log_out_files_dict(all_logdirs, all_outfiles, list_jobs_to_analyse)
 
-    if(os.path.isfile(args.job_info_csv)):
-        job_info_df = pd.read_csv(args.job_info_csv, index_col='idx')
+    if(os.path.isfile(args.nb_relaunch_csv)):
+        nb_relaunch_df = pd.read_csv(args.nb_relaunch_csv, index_col='idx', header=0)
     else:
-        job_info_df = pd.Series(np.zeros(len(list_jobs_to_analyse)), index=list_jobs_to_analyse)
+        nb_relaunch_df = pd.Series(np.zeros(len(list_jobs_to_analyse)), index=list_jobs_to_analyse)
 
-    results_dict = dict() #pd.DataFrame(index=['job_id'], columns=[['best_acc', 'best_loss', 'best_step', 'log_path', 'hash']])
+    results_dict = dict()
     failed_jobs_list = []
 
     for job_id, (outfile, logpath) in log_out_files_dict.items():
@@ -63,7 +60,6 @@ def run():
             csvreader = reversed(list(csv.reader(csvfile, delimiter=',')))
             for i, row in enumerate(csvreader):
                 if i < 100:
-                    # 'Val[ 0-9a-z_.]*step: ([0-9]+),[ 0-9a-z_.]*loss: ([0-9.]+)'
                     matched = re.search('acc: ([0-9.]+)', row[-1])
                     if matched:
                         for metric in row:
@@ -109,11 +105,12 @@ def run():
 
     jobs_to_relaunch_df.drop(index=curr_running_job_ids, axis=0) # drop currently running jobs
     jobs_to_relaunch_df.loc[:, 'relaunched_counter'] = 0
-    common_idx = list(np.intersect1d(jobs_to_relaunch_df.index, job_info_df.index))
+    common_idx = list(np.intersect1d(jobs_to_relaunch_df.index, nb_relaunch_df.index))
     if len(common_idx) > 0:
-        jobs_to_relaunch_df.loc[common_idx, 'relaunched_counter'] = job_info_df.get(common_idx)
+        jobs_to_relaunch_df.loc[common_idx, 'relaunched_counter'] = nb_relaunch_df.get(common_idx)
     ####
-    job_info_df.loc[jobs_to_relaunch_df.index] += 1
+    nb_relaunch_df.loc[jobs_to_relaunch_df.index] += 1
+
 
     jobs_to_relaunch_df['hparams'] = jobs_to_relaunch_df['log_path'].apply(get_hparams_from_file)
     jobs_to_relaunch_df = pd.concat([jobs_to_relaunch_df.drop(['hparams'], axis=1), jobs_to_relaunch_df['hparams'].apply(pd.Series)], axis=1)
@@ -130,23 +127,34 @@ def run():
 
         rep_nb = find_rep_nb(log_path)
         ckpt_dir = join(log_path, f'fold_{rep_nb}')
-        ckpt_path = join(ckpt_dir, find_best_ckpt(ckpt_dir))
+        if os.path.isdir(ckpt_dir):
+            ckpt_path = join(ckpt_dir, find_ckpt(ckpt_dir))
+        else:
+            ckpt_path = log_path
+
         eval_freq = row['eval_freq']
         ef_factor = row['eval_freq_factor']
         mode = row['mode']
-        hidden_size = row['hidden_size']
-        b_len = row['b_len']
-        lr = row['lr']
-        h_size = row['hidden_size']
-        tree_depth = row['depth']
+        b_len = int(row['b_len'])
+        lr = float(row['lr'])
+        h_size = int(row['hidden_size'])
+        if math.isnan(row['max_tree_depth']):
+            tree_depth = int(row['depth'])
+        else:
+            tree_depth = int(row['max_tree_depth'])
         s_len = row['s_len']
         keep_correlations = row['keep_correlations']
         stoch_s_len = row['stoch_s_len']
 
+        # These are collected in main
+        #last_val_step = row['last_val_step']
+        #val_step = row['val_step']
+        #last_val_acc = row['last_val_acc']
+
         sbatch_command = f'sbatch --job-name={mode}.h{h_size}.b{b_len}.d{tree_depth}.lr{lr}.rep{rep_nb} um_arr.run -h {h_size} -b {b_len} -d {tree_depth} -l {lr} -s {rep_nb} -e {eval_freq} -f {ef_factor} -g {mode} -c {s_len} -i {ckpt_path} -j {keep_correlations} -k {stoch_s_len}'
         sbatch_relaunch_commands.append(sbatch_command)
 
-    job_info_df.to_csv(args.job_info_csv)
+    nb_relaunch_df.to_csv(args.nb_relaunch_csv)
     print(f'Found {len(sbatch_relaunch_commands)} jobs to relaunch') 
 
     with open('./sbatch_relaunch_commands.txt', 'w') as outfile:
@@ -179,28 +187,18 @@ def construct_log_out_files_dict(all_logdirs, all_outfiles, list_jobs_to_analyse
                         log_out_files_dict[int(job_id_str)] = (outfile, logdir) 
     return log_out_files_dict
 
-def get_hparams_from_file(log_path):
-    rep_nb = int(re.search('rep([0-9]+)', log_path).group(1))
-    hparams_path = join(log_path, 'metrics', f'fold_{rep_nb}', 'hparams.yaml')
-    hparams_dict=empty_hparams
-    
-    if os.path.isfile(hparams_path):
-        with open(hparams_path, "r") as stream:
-            try:
-                hparams_dict=yaml.safe_load(stream)
-            except yaml.YAMLError as exc:
-                print(exc)
-    else:
-        print(f'hparams.yaml file not found {hparams_path}')
-    #print('hparams_dict', hparams_dict)
-    return hparams_dict
 
 def find_rep_nb(log_path):
-    ckpt_dirs = os.listdir(log_path)
-    for ckpt_dir in ckpt_dirs:
-        if 'fold' in ckpt_dir:
-            rep_nb = int(re.search('fold_([0-9]+)', ckpt_dir).group(1))
-            break
+
+    matched = re.search('rep([0-9]+)', log_path)
+    if matched:
+        rep_nb=int(matched.group(1))
+    else:
+        ckpt_dirs = os.listdir(join(log_path, 'metrics'))
+        for ckpt_dir in ckpt_dirs:
+            if 'fold' in ckpt_dir:
+                rep_nb = int(re.search('fold_([0-9]+)', ckpt_dir).group(1))
+                break
     return rep_nb
 
 if __name__ == '__main__':

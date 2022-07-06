@@ -7,7 +7,7 @@ import re
 curr_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, join(curr_path,"../data/"))
 sys.path.insert(0, join(curr_path,"../utils/"))
-from util_functions import bcolors, find_best_ckpt
+from util_functions import bcolors, find_ckpt, get_hparams_from_file
 
 from datetime import datetime
 import time
@@ -18,7 +18,7 @@ import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, TQDMProgressBar, LearningRateMonitor
 
-from datasets import MnistDataModule, SynthDataModule, SynthPredictDataset
+from datasets import MnistDataModule, SynthDataModule
 from network import FFNetwork
 from ultrametric_callback import UltraMetricCallback, LitProgressBar
 from custom_callbacks import Custom_EarlyStopping
@@ -34,15 +34,15 @@ def run():
     parser.add_argument('--dataset', type=str, default="synth", help="define datset to use")
 
     parser.add_argument('--input_size', type=int, default=200, help="define level of verbosity")
-    parser.add_argument('--batch_size_train', type=int, default=32, help="define level of verbosity")
+    parser.add_argument('--batch_size_train', type=int, default=2, help="define level of verbosity")
     parser.add_argument('--batch_size_test', type=int, default=1000, help="define level of verbosity")
-    parser.add_argument('--max_tree_depth', type=int, default=3, help="define level of verbosity")
-    parser.add_argument('--noise_level', type=int, default=1, help="define level of verbosity")
+    parser.add_argument('--max_tree_depth', type=int, default=5, help="define level of verbosity")
+    parser.add_argument('--noise_level', type=int, default=50, help="define level of verbosity")
     parser.add_argument('--p_flip', type=float, default=0.1, help="define level of verbosity")
-    parser.add_argument('--p_noise', type=float, default=0.05, help="define level of verbosity")
+    parser.add_argument('--p_noise', type=float, default=0.02, help="define level of verbosity")
 
     parser.add_argument('--hidden_size', type=int, default=200, help="define level of verbosity")
-    parser.add_argument('--lr', type=float, default=0.01, help="define level of verbosity")
+    parser.add_argument('--lr', type=float, default=1.0, help="define level of verbosity")
     parser.add_argument('--max_epochs', type=int, default=100, help="define level of verbosity")
     parser.add_argument('--generate_chain', action='store_true', help="define level of verbosity")
     parser.add_argument('--nb_folds', type=int, default=1, help="define level of verbosity")
@@ -56,8 +56,8 @@ def run():
     parser.add_argument('--metric', type=str, default="val_loss", choices=['val_acc', 'val_loss', 'train_acc'], help="define datset to use")
     parser.add_argument('--auto_lr_find', action='store_true', help="define level of verbosity")
     parser.add_argument('--lr_scheduler', type=str, default=None, choices=['reduce_lr'], help="define datset to use")
-    parser.add_argument('--eval_freq', type=int, default=250, help="define level of verbosity")
-    parser.add_argument('--eval_freq_factor', type=float, default=2.0, help="define level of verbosity")
+    parser.add_argument('--eval_freq', type=int, default=200, help="define level of verbosity")
+    parser.add_argument('--eval_freq_factor', type=float, default=1.4, help="define level of verbosity")
     parser.add_argument('--job_id', type=str, default="", help="define level of verbosity")
     parser.add_argument('--early_stop', action='store_true', help="define level of verbosity")
     parser.add_argument('--start_seed', type=int, default=0, help="define level of verbosity")
@@ -73,44 +73,42 @@ def run():
 
     args = parser.parse_args()
     print("All args: ", args)
-    nb_classes = 2**args.max_tree_depth
+
     logs_path = def_logs_path(args)
-    eval_freq = args.eval_freq
-    if eval_freq <= args.b_len: 
-        eval_freq = args.b_len
-    elif args.b_len > 0: 
-        eval_freq = (args.eval_freq // args.b_len) * args.b_len # ensure eval_freq is a multiple of b_len
-    else: 
-        eval_freq = args.eval_freq 
-    assert(eval_freq > 0 and eval_freq >= args.b_len)
-    print(f'Start eval_freq: {eval_freq}')
+    hparams_dict=dict()
+    if args.ckpt_path:
+        hparams_dict = get_hparams_from_file(logs_path)
+    hparams_dict_from_args = construct_hparams_dict_from_args(args)
 
-    if args.dataset == 'mnist':
-        input_size = 28*28
-    else:
-        input_size = args.input_size
+    for key in hparams_dict_from_args.keys(): # if one necessary hparam value is not in the hparams.yaml file from the ckpt, we complete w the value from 
+            hparams_dict.setdefault(key, hparams_dict_from_args[key])
 
-    val_step = args.val_step
-    if eval_freq < args.val_step:
-        val_step = eval_freq
+    # temporary for attr that changed names
+    if 'curr_val_step' in hparams_dict.keys():
+        hparams_dict['curr_reset_step'] = hparams_dict['curr_val_step']
+
+    if 'curr_reset_step' in hparams_dict.keys():
+        hparams_dict['curr_val_step'] = hparams_dict['curr_reset_step']
 
     # training
     for seed in np.arange(args.start_seed, args.start_seed + args.nb_folds, step=1):
         start_time = time.time()
         torch.manual_seed(seed)
         np.random.seed(seed)
-        
+
         
         print(f'{bcolors.OKCYAN}Running mode: {args.mode} seed: {seed} {bcolors.ENDC}')
         callbacks, checkpoint_callback = def_callbacks(args, logs_path, seed)
 
-        model = FFNetwork(input_size=input_size, hidden_size=args.hidden_size, nb_classes=nb_classes, 
-                        mode=args.mode, optimizer=args.optimizer, lr=args.lr, lr_scheduler=args.lr_scheduler,
-                        b_len=args.b_len, eval_freq=eval_freq, eval_freq_factor=args.eval_freq_factor,
-                        no_reshuffle=args.no_reshuffle, batch_size=args.batch_size_train, s_len=args.s_len, 
-                        depth=args.max_tree_depth, keep_correlations=args.keep_correlations, 
-                        stoch_s_len=args.stoch_s_len, last_val_step=args.last_val_step, val_step=val_step)
-        
+        model = FFNetwork(input_size=hparams_dict['input_size'], hidden_size=hparams_dict['hidden_size'], nb_classes=hparams_dict['nb_classes'], 
+                        mode=hparams_dict['mode'],  optimizer=hparams_dict['optimizer'],  lr=hparams_dict['lr'], 
+                        lr_scheduler=hparams_dict['lr_scheduler'],  b_len=hparams_dict['b_len'],  eval_freq=hparams_dict['eval_freq'], 
+                        eval_freq_factor=hparams_dict['eval_freq_factor'],  no_reshuffle=hparams_dict['no_reshuffle'],  
+                        batch_size_train=hparams_dict['batch_size_train'], s_len=hparams_dict['s_len'], max_tree_depth=hparams_dict['max_tree_depth'], 
+                        keep_correlations=hparams_dict['keep_correlations'], stoch_s_len=hparams_dict['stoch_s_len'],
+                        val_step=hparams_dict['val_step'], ckpt_path=hparams_dict['ckpt_path'], last_val_acc=hparams_dict['last_val_acc'],
+                        logs_path=logs_path, rep_nb=int(seed), curr_reset_step=hparams_dict['curr_reset_step'])
+
         data_module = create_data_modules(args)
         if args.mode == 'um':
             data_module.set_markov_chain(args, seed)
@@ -121,8 +119,13 @@ def run():
         elif args.mode == 'rand':
             val_check_interval=15
 
-        
-        logger = TensorBoardLogger(logs_path, name=f"metrics", version=f"fold_{seed}")
+        version_name=f"fold_{seed}"
+        if os.path.isdir(join(logs_path, 'metrics', f'fold_{seed}')):
+            for part_nb in [0,1,2,3]:
+                if not os.path.isdir(join(logs_path, 'metrics', f'fold_{seed}_part{part_nb}')):
+                    version_name = f'fold_{seed}_part{part_nb}'
+                    break
+        logger = TensorBoardLogger(logs_path, name=f"metrics", version=version_name)
         trainer = pl.Trainer(default_root_dir=logs_path, gpus=args.gpu, 
                         num_nodes=1, precision=32, logger=logger, max_epochs=args.max_epochs,
                         callbacks=callbacks,
@@ -137,7 +140,7 @@ def run():
             if suggested_lr <= 5.0 and suggested_lr > 1e3:
                 model.hparams.lr = suggested_lr
 
-        if args.ckpt_path:
+        if args.ckpt_path and args.b_len == 0: # we only use the ckpt for b=0 for now, if b>0 we only use the hparams
             ckpt_path = args.ckpt_path
             if not ckpt_path.endswith('.ckpt'):
                 ckpt_path = args.ckpt_path + '.ckpt'
@@ -145,7 +148,7 @@ def run():
             if not os.path.isfile(ckpt_path):
                 ckpt_dir = join(logs_path, f'fold_{seed}')
                 assert(os.path.isdir(ckpt_dir) and len(os.listdir(ckpt_dir)) > 0)
-                ckpt_path = join(ckpt_dir, find_best_ckpt(ckpt_dir))
+                ckpt_path = join(ckpt_dir, find_ckpt(ckpt_dir))
 
             print(f'@trainer.fit {ckpt_path}, {os.path.isfile(ckpt_path)}')
             trainer.fit(model, data_module, ckpt_path=ckpt_path)
@@ -202,14 +205,14 @@ def def_callbacks(args, checkpoint_path, seed):
         print(f'Saving ckpt with {optim_mode} {args.metric}')
         checkpoint_callback = ModelCheckpoint(monitor=args.metric, dirpath=checkpoint_path_fold,
                                         filename="{step}_{val_acc:.4f}",
-                                        save_top_k=1, mode=optim_mode)
+                                        save_top_k=1, mode=optim_mode, save_last=True)
         callbacks.append(checkpoint_callback)
 
     if args.early_stop:
         if args.mode in ['um', 'rand']:
-            patience = 70 if args.b_len > 0 else 70
+            patience = 50 if args.b_len > 0 else 50
         elif args.mode == 'split':
-            patience = 300
+            patience = 50
         stopping_threshold = 0.985 if args.b_len > 0 else 0.997
         callbacks.append(
             Custom_EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=True, 
@@ -246,7 +249,7 @@ def def_logs_path(args, new_logs=False):
         ckpt_name = f"{args.job_id}_{dt_string}_{args.dataset}{corr_string}{ckpt_str}_{args.mode}_b{args.b_len}{tree_depth_str}{s_len_str}_h{args.hidden_size}_lr{args.lr}_rep{args.start_seed}/"
         logs_path = os.path.join(args.logfolder, ckpt_name)
 
-    else:
+    else: # we store our logs in the same dir as the previous ckpt
         matched = re.search('(2[0-9]{6}_([0-9]{4}_){2}(?:synth|mnist)_(?:um|split|rand)_[a-z0-9._]+_rep[0-9]+)', args.ckpt_path)
         if matched:
             logs_name = matched.group(1)
@@ -260,5 +263,39 @@ def def_logs_path(args, new_logs=False):
     print(f"Saving logs at: {logs_path}")
     return logs_path
 
+def construct_hparams_dict_from_args(args):
+    hparams_from_args_dict = vars(args)
+
+    nb_classes = 2**args.max_tree_depth
+    eval_freq = args.eval_freq
+    if eval_freq <= args.b_len: 
+        eval_freq = args.b_len
+    elif args.b_len > 0: 
+        eval_freq = (args.eval_freq // args.b_len) * args.b_len # ensure eval_freq is a multiple of b_len
+    else: 
+        eval_freq = args.eval_freq 
+    assert(eval_freq > 0 and eval_freq >= args.b_len)
+    print(f'Start eval_freq: {eval_freq}')
+
+    if args.dataset == 'mnist':
+        input_size = 28*28
+    else:
+        input_size = args.input_size
+
+    val_step = args.val_step
+    if eval_freq < args.val_step:
+        val_step = eval_freq
+
+    hparams_from_args_dict['nb_classes'] = nb_classes 
+    hparams_from_args_dict['last_val_acc'] = 0.0
+    hparams_from_args_dict['val_step'] = val_step
+    hparams_from_args_dict['eval_freq'] = eval_freq
+    hparams_from_args_dict['input_size'] = input_size
+    hparams_from_args_dict['curr_reset_step'] = 0
+    hparams_from_args_dict['rep_nb'] = args.start_seed
+    hparams_from_args_dict['logs_path'] = args.ckpt_path
+
+    return hparams_from_args_dict
+    
 if __name__ == '__main__':
     run()

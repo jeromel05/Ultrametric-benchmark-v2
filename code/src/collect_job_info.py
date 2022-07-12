@@ -15,12 +15,10 @@ from util_functions import bcolors, find_ckpt, get_hparams_from_file
 from datetime import datetime
 import time
 
-
 def run():
     parser = argparse.ArgumentParser()
     parser.add_argument('--logfolder', type=str, default='../../../scratch/logs/', help="Folder to save the data")
     parser.add_argument('--outfolder', type=str, default='../../../scratch/', help="Folder to save the .out files")
-    parser.add_argument('--nb_relaunch_csv', type=str, default='../../../scratch/nb_relaunch.csv', help="Folder to save the .out files")
     parser.add_argument('-j','--job_range', nargs='+', help='range of job_ids to analyse', required=True)
 
     args = parser.parse_args()
@@ -35,11 +33,6 @@ def run():
     all_logdirs = sorted(os.listdir(logfolder))
     all_outfiles = sorted(os.listdir(outfolder))
     log_out_files_dict = construct_log_out_files_dict(all_logdirs, all_outfiles, list_jobs_to_analyse)
-
-    if(os.path.isfile(args.nb_relaunch_csv)):
-        nb_relaunch_df = pd.read_csv(args.nb_relaunch_csv, index_col='idx', header=0)
-    else:
-        nb_relaunch_df = pd.Series(np.zeros(len(list_jobs_to_analyse)), index=list_jobs_to_analyse)
 
     results_dict = dict()
     failed_jobs_list = []
@@ -104,13 +97,7 @@ def run():
     
 
     jobs_to_relaunch_df.drop(index=curr_running_job_ids, axis=0) # drop currently running jobs
-    jobs_to_relaunch_df.loc[:, 'relaunched_counter'] = 0
-    common_idx = list(np.intersect1d(jobs_to_relaunch_df.index, nb_relaunch_df.index))
-    if len(common_idx) > 0:
-        jobs_to_relaunch_df.loc[common_idx, 'relaunched_counter'] = nb_relaunch_df.get(common_idx)
     ####
-    nb_relaunch_df.loc[jobs_to_relaunch_df.index] += 1
-
 
     jobs_to_relaunch_df['hparams'] = jobs_to_relaunch_df['log_path'].apply(get_hparams_from_file)
     jobs_to_relaunch_df = pd.concat([jobs_to_relaunch_df.drop(['hparams'], axis=1), jobs_to_relaunch_df['hparams'].apply(pd.Series)], axis=1)
@@ -145,6 +132,10 @@ def run():
         s_len = row['s_len']
         keep_correlations = row['keep_correlations']
         stoch_s_len = row['stoch_s_len']
+        if isinstance(keep_correlations, str):
+            keep_correlations = keep_correlations.lower()
+        if isinstance(stoch_s_len, str):
+            stoch_s_len = stoch_s_len.lower()
 
         # These are collected in main
         #last_val_step = row['last_val_step']
@@ -154,7 +145,6 @@ def run():
         sbatch_command = f'sbatch --job-name={mode}.h{h_size}.b{b_len}.d{tree_depth}.lr{lr}.rep{rep_nb} um_arr.run -h {h_size} -b {b_len} -d {tree_depth} -l {lr} -s {rep_nb} -e {eval_freq} -f {ef_factor} -g {mode} -c {s_len} -i {ckpt_path} -j {keep_correlations} -k {stoch_s_len}'
         sbatch_relaunch_commands.append(sbatch_command)
 
-    nb_relaunch_df.to_csv(args.nb_relaunch_csv)
     print(f'Found {len(sbatch_relaunch_commands)} jobs to relaunch') 
 
     with open('./sbatch_relaunch_commands.txt', 'w') as outfile:

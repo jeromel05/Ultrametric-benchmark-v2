@@ -130,10 +130,10 @@ class FFNetwork(pl.LightningModule):
         else:
             length_epoch=len(self.trainer.datamodule.train_dataloader().sampler.um_indexes)
 
-        last_batch_idx = length_epoch // self.trainer.datamodule.batch_size_train
-        cond_last_batch = batch_idx == last_batch_idx
+        last_batch_idx = length_epoch // self.trainer.datamodule.batch_size_train - 1
+        cond_last_batch = (batch_idx == last_batch_idx and self.hparams.mode == 'um') or (batch_idx%20 == 0 and self.hparams.mode in ['rand', 'split']) # last_batch_idx works only for um, for the others we eval every 20 steps
 
-        if (((self.hparams.mode == 'rand') or (self.hparams.b_len == 0 and self.trainer.current_epoch % 5==0) or self.hparams.no_reshuffle) and cond_last_batch) or self.n_runs < 2: # # 
+        if (((self.hparams.mode == 'rand') or (self.hparams.b_len == 0) or self.hparams.no_reshuffle) and cond_last_batch) or self.n_runs < 2: #
             self.run_val=True
         elif self.hparams.b_len > 0 and (self.hparams.mode in ['split', 'um']) and (not self.hparams.no_reshuffle):
             cond_b_len = self.trainer.global_step >= self.curr_eval_freq + self.last_val_step + self.curr_reset_step # cond to reset dataloader to 0

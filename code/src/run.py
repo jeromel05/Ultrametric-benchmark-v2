@@ -209,10 +209,12 @@ def def_callbacks(args, checkpoint_path, seed):
         callbacks.append(checkpoint_callback)
 
     if args.early_stop:
-        if args.mode in ['um', 'rand']:
-            patience = 50 if args.b_len > 0 else 50
-        elif args.mode == 'split':
-            patience = 50
+        
+        #if args.mode in ['um', 'rand']:
+        #    patience = 50 if args.b_len > 0 else 50
+        #elif args.mode == 'split':
+        #    patience = 50
+        patience = 100
         stopping_threshold = 0.985 if args.b_len > 0 else 0.997
         callbacks.append(
             Custom_EarlyStopping(monitor="val_acc", min_delta=0.00, verbose=True, 

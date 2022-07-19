@@ -39,7 +39,13 @@ class FFNetwork(pl.LightningModule):
         self.curr_eval_freq = eval_freq
         self.eval_freq_factor = eval_freq_factor
         self.last_val_acc = last_val_acc
-        self.max_eval_freq = 10000
+
+        if mode == 'split' and self.curr_reset_step > 40000: # we accelerate towards the end
+            self.max_eval_freq = 30000
+        elif mode == 'split' and self.curr_reset_step > 10000:
+            self.max_eval_freq = 20000
+        else:
+            self.max_eval_freq = 10000
 
         self.reset_network=False
         self.n_runs=0

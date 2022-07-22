@@ -1,28 +1,48 @@
+import time
+debug=True
+
+if debug: start_time = time.time()
 import argparse
 import os, sys
 from os.path import join
-
 import numpy as np
 import re
+
+if debug:
+    print(f'step_os_sys_np_re_argparse {time.time()-start_time:.2}')
+    start_time = time.time()
+
 curr_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, join(curr_path,"../data/"))
 sys.path.insert(0, join(curr_path,"../utils/"))
+
+if debug:
+    print(f'step_mod_path {time.time()-start_time:.2}')
+    start_time = time.time()
+
 from util_functions import bcolors, find_ckpt, get_hparams_from_file
 
-from datetime import datetime
-import time
+if debug:
+    print(f'step_utilsf {time.time()-start_time:.2}')
+    start_time = time.time()
 
+from datetime import datetime
 import torch
 from torchvision import transforms
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, TQDMProgressBar, LearningRateMonitor
 
+if debug:
+    print(f'step_torch_pl {time.time()-start_time:.2}')
+    start_time = time.time()
+
 from datasets import MnistDataModule, SynthDataModule
 from network import FFNetwork
 from ultrametric_callback import UltraMetricCallback, LitProgressBar
 from custom_callbacks import Custom_EarlyStopping
 
+if debug: print(f'step_files {time.time()-start_time:.2}')
 
 def run():
     parser = argparse.ArgumentParser()
@@ -89,6 +109,14 @@ def run():
 
     if 'curr_reset_step' in hparams_dict.keys():
         hparams_dict['curr_val_step'] = hparams_dict['curr_reset_step']
+
+    if hparams_dict['curr_reset_step'] > 30000 and hparams_dict['max_tree_depth'] > 6: # for d > 6, we set the ef to 30000 after relaunch to speed up
+        eval_freq_pot = 30000
+        if hparams_dict['curr_reset_step'] > 50000:
+            eval_freq_pot = 30000
+
+        hparams_dict['eval_freq'] = check_eval_freq(eval_freq_pot, hparams_dict['b_len'])
+        hparams_dict['eval_freq_factor'] = 1.05
 
     # training
     for seed in np.arange(args.start_seed, args.start_seed + args.nb_folds, step=1):
@@ -270,13 +298,7 @@ def construct_hparams_dict_from_args(args):
 
     nb_classes = 2**args.max_tree_depth
     eval_freq = args.eval_freq
-    if eval_freq <= args.b_len: 
-        eval_freq = args.b_len
-    elif args.b_len > 0: 
-        eval_freq = (args.eval_freq // args.b_len) * args.b_len # ensure eval_freq is a multiple of b_len
-    else: 
-        eval_freq = args.eval_freq 
-    assert(eval_freq > 0 and eval_freq >= args.b_len)
+    eval_freq = check_eval_freq(eval_freq, args.b_len)
     print(f'Start eval_freq: {eval_freq}')
 
     if args.dataset == 'mnist':
@@ -286,7 +308,7 @@ def construct_hparams_dict_from_args(args):
 
     val_step = args.val_step
     if eval_freq < args.val_step:
-        val_step = eval_freq
+        val_step = eval_freq # we evaluate at least every eval freq
 
     hparams_from_args_dict['nb_classes'] = nb_classes 
     hparams_from_args_dict['last_val_acc'] = 0.0
@@ -298,6 +320,16 @@ def construct_hparams_dict_from_args(args):
     hparams_from_args_dict['logs_path'] = args.ckpt_path
 
     return hparams_from_args_dict
+
+def check_eval_freq(eval_freq, b_len):
+    if eval_freq < b_len: 
+        eval_freq = b_len
+    elif b_len > 0: 
+        eval_freq = (eval_freq // b_len) * b_len # ensure eval_freq is a multiple of b_len
+
+    assert(eval_freq > 0 and eval_freq >= b_len)
+
+    return eval_freq
     
 if __name__ == '__main__':
     run()

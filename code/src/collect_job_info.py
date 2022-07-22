@@ -97,7 +97,6 @@ def run():
     
 
     jobs_to_relaunch_df.drop(index=curr_running_job_ids, axis=0) # drop currently running jobs
-    ####
 
     jobs_to_relaunch_df['hparams'] = jobs_to_relaunch_df['log_path'].apply(get_hparams_from_file)
     jobs_to_relaunch_df = pd.concat([jobs_to_relaunch_df.drop(['hparams'], axis=1), jobs_to_relaunch_df['hparams'].apply(pd.Series)], axis=1)

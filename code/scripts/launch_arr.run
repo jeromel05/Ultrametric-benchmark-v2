@@ -1,0 +1,68 @@
+#!/bin/sh
+#SBATCH --account=theory
+#SBATCH --job-name=launch_arr
+#SBATCH -c 1
+#SBATCH --time=00:5:00
+#SBATCH --error="/burg/home/jl6181/home/scratch/stderr/%j_err.out"
+#SBATCH --output="/burg/home/jl6181/home/scratch/%j_arr.out"
+#SBATCH --partition=short
+
+echo "JOB_ID"
+echo $SLURM_JOB_ID
+
+ARGS=()
+eval_freq=1000
+ef_factor=1.7
+mode="um"
+s_len=0
+ckpt_path=""
+keep_correlations=false
+stoch_s_len=false
+while [ $# -gt 0 ]
+do
+    unset OPTIND
+    unset OPTARG
+    while getopts ":e:f:m:s:c:k:l:" flag
+    do
+        case "${flag}" in
+            e) eval_freq=${OPTARG};;
+            f) ef_factor=${OPTARG};;
+            m) mode=${OPTARG};;
+            s) s_len=${OPTARG};;
+            c) ckpt_path=${OPTARG};;
+            k) keep_correlations=${OPTARG};;
+            l) stoch_s_len=${OPTARG};;
+        esac
+    done
+
+    shift $((OPTIND-1))
+    ARGS+=( "$1" )
+    shift
+done
+
+H_SIZE_=${ARGS[0]}
+B_LEN_=${ARGS[1]}
+TREE_DEPTH_=${ARGS[2]}
+LR_=${ARGS[3]}
+START_SEED_=${ARGS[4]}
+
+
+for h_size in $H_SIZE_
+do
+    for b_len in $B_LEN_
+    do
+        for tree_depth in $TREE_DEPTH_
+        do
+            for lear_r in $LR_
+            do
+                for start_seed in $START_SEED_
+                do
+                    echo "RUNNING HID_SIZE $h_size B_LEN $b_len TREE_DEPTH $tree_depth LR $lear_r SEED $start_seed EVAL_FREQ $eval_freq FACTOR $ef_factor MODE $mode S_LEN $s_len CKPT_PATH $ckpt_path KEEP_CORR $keep_correlations STOCH_S_LEN $stoch_s_len"
+                    sbatch --job-name=$mode.h$h_size.b$b_len.d$tree_depth.lr$lear_r.rep$start_seed um_arr.run -h "$h_size" -b "$b_len" -d "$tree_depth" -l "$lear_r" -s "$start_seed" -e "$eval_freq" -f "$ef_factor" -g "$mode" -c "$s_len" -i "$ckpt_path" -j "$keep_correlations" -k "$stoch_s_len"
+                done
+            done
+        done
+    done
+done
+
+echo "DONE"

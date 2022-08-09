@@ -1,0 +1,20 @@
+#!/bin/sh
+#SBATCH --account=theory
+#SBATCH --job-name=launch_sbatch
+#SBATCH -c 1
+#SBATCH --time=00:10:00
+#SBATCH --error="/burg/home/jl6181/home/scratch/stderr/%j_err.out"
+#SBATCH --output="/burg/home/jl6181/home/scratch/%j.out"
+#SBATCH --partition=short
+
+
+echo "JOB_ID"
+echo $SLURM_JOB_ID
+
+while read command; do
+	echo 'LAUNCHING: $command'
+	echo $command
+      	$command
+done <sbatch_relaunch_commands.txt
+
+echo "DONE"

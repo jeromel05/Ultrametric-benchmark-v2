@@ -1,0 +1,16 @@
+#!/bin/sh
+#SBATCH --account=theory
+#SBATCH --job-name=launch_collect
+#SBATCH -c 1
+#SBATCH --time=00:45:00
+#SBATCH --error="/burg/home/jl6181/home/scratch/stderr/%j_err.out"
+#SBATCH --output="/burg/home/jl6181/home/scratch/%j.out"
+
+
+echo "JOB_ID"
+echo $SLURM_JOB_ID
+
+python ../src/collect_job_info.py -j 2894835 2895074
+
+echo "DONE_RUN"
+

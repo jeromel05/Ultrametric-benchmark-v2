@@ -1,0 +1,64 @@
+#!/bin/sh
+#SBATCH --account=theory
+#SBATCH -c 4
+#SBATCH --time=11:55:00
+#SBATCH --gres gpu:1
+#SBATCH --error="/burg/home/jl6181/home/scratch/stderr/%j_err.out"
+#SBATCH --output="/burg/home/jl6181/home/scratch/%j.out"
+
+module load cuda11.0/toolkit/11.0.3 cuda11.0/blas/11.0.3 cudnn8.0-cuda11.0/8.0.5.39
+
+echo "JOB_ID"
+echo $SLURM_JOB_ID
+start=`date +%s`
+
+mode="um"
+s_len=0
+ckpt_path=""
+keep_correlations=false
+stoch_s_len=false
+
+while getopts ":h:b:d:l:s:e:f:g:c:i:j:k:" flag
+do
+    case "${flag}" in
+        h) h_size=${OPTARG};;
+        b) b_len=${OPTARG};;
+        d) tree_depth=${OPTARG};;
+        l) lr=${OPTARG};;
+        s) start_seed=${OPTARG};;
+        e) eval_freq=${OPTARG};;
+	f) ef_factor=${OPTARG};;
+        g) mode=${OPTARG};;
+        c) s_len=${OPTARG};;
+        i) ckpt_path=${OPTARG};;
+        j) keep_correlations=${OPTARG};;
+	k) stoch_s_len=${OPTARG};;
+    esac
+done
+
+echo "RUNNING UM MNIST: HID_SIZE $h_size B_LEN $b_len LR $lr SEED $start_seed EF $eval_freq EF_F $ef_factor MODE $mode S_LEN $s_len KEEP_CORR $keep_correlations STOCH_S_LEN $stoch_s_len"
+corr_arg=""
+stoch_arg=""
+ckpt_arg=""
+save_ckpt_arg=""
+if $keep_correlations; then
+    corr_arg=$"--keep_correlations"
+fi
+if $stoch_s_len; then
+    stoch_arg=$"--stoch_s_len"
+fi
+if [ ${#ckpt_path} -gt 1 ]; then
+    echo "RESUMING FROM $ckpt_path"
+    ckpt_arg=$"--ckpt_path $ckpt_path"
+fi
+if [[ $b_len -lt 1 ]] && [[ $tree_depth -gt 6 ]]; then
+    echo "SAVING CKPT"
+    save_ckpt_arg=$"--save_ckpt"
+fi
+echo "LAUNCH_PY"
+python ~/home/repo/code/src/run.py --datafolder ~/home/repo/data --logfolder /burg/home/jl6181/home/scratch/logs/ --gpu 1 --dataset mnist --batch_size_train 2 --batch_size_test 1000 --max_epochs 1000 --nb_folds 1 --num_workers 4 --mode "$mode" --b_len "$b_len" --eval_freq "$eval_freq" --hidden_size "$h_size" --lr "$lr" --early_stop --job_id "$SLURM_JOB_ID" --start_seed "$start_seed" --eval_freq_factor "$ef_factor" --s_len "$s_len" $save_ckpt_arg $corr_arg $stoch_arg $ckpt_arg
+
+
+end=`date +%s`
+runtime=$((end-start))
+echo "JOB COMPLETED IN $runtime"

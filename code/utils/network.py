@@ -138,6 +138,8 @@ class FFNetwork(pl.LightningModule):
 
         last_batch_idx = length_epoch // self.trainer.datamodule.batch_size_train - 1
         cond_last_batch = (batch_idx == last_batch_idx and self.hparams.mode == 'um') or (batch_idx%20 == 0 and self.hparams.mode in ['rand', 'split']) # last_batch_idx works only for um, for the others we eval every 20 steps
+        if self.hparams.nb_classes <= 8 and self.hparams.b_len == 0: # for MNIST b0 we eval every step
+            self.run_val=True
 
         if (((self.hparams.mode == 'rand') or (self.hparams.b_len == 0) or self.hparams.no_reshuffle) and cond_last_batch) or self.n_runs < 2: #
             self.run_val=True

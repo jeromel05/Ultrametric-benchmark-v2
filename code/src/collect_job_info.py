@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 curr_path = os.path.dirname(os.path.realpath(__file__))
 sys.path.insert(0, join(curr_path,"../utils/"))
-from util_functions import bcolors, find_ckpt, get_hparams_from_file
+from util_functions import find_ckpt, get_hparams_from_file
 
 from datetime import datetime
 import time
@@ -32,14 +32,14 @@ def run():
 
     all_logdirs = sorted(os.listdir(logfolder))
     all_outfiles = sorted(os.listdir(outfolder))
-    log_out_files_dict = construct_log_out_files_dict(all_logdirs, all_outfiles, list_jobs_to_analyse)
+    log_out_files_dict = construct_log_out_files_dict(outfolder, all_logdirs, all_outfiles, list_jobs_to_analyse)
 
     results_dict = dict()
     failed_jobs_list = []
 
-    for job_id, (outfile, logpath) in log_out_files_dict.items():
-        outfile =  join(outfolder, outfile)
-        log_path =  join(logfolder, logpath)
+    for job_id, (outfile, log_path) in log_out_files_dict.items():
+        #outfile =  join(outfolder, outfile)
+        #log_path =  join(logfolder, logpath) # logpath is already absolute
         
         if not os.path.isdir(log_path) or not os.path.isfile(outfile):
             print(f'ERROR: job {job_id} logs not found')
@@ -106,8 +106,6 @@ def run():
     sbatch_relaunch_commands = []
     for job_id, row in jobs_to_relaunch_df.iterrows():
         #print(row)
-        ### STILL HAVE TO FIND CKPT_PATH AND REP#
-
         #ckpt_path = '/burg/home/jl6181/home/scratch/logs/2626672_2106_1905_synth_um_b0_d5_h60_lr2.0_rep17/fold_17/step\=2709_val_acc\=0.7969.ckpt'
         log_path = row['log_path']
 
@@ -164,8 +162,24 @@ def get_hash(ckpt_name):
         hash1=''
     return hash1
 
-def construct_log_out_files_dict(all_logdirs, all_outfiles, list_jobs_to_analyse):
+def construct_log_out_files_dict(outfolder, all_logdirs, all_outfiles, list_jobs_to_analyse):
     log_out_files_dict = dict()
+
+    # 1. change all this to iter over part_x and find highest
+    for job_id in list_jobs_to_analyse:
+        orig_log_path = ''
+        outfile_path = join(outfolder, (str(job_id) + '.out'))
+        if os.path.isfile(outfile_path):
+            with open(outfile_path, 'r') as outfile:
+                csvreader = list(csv.reader(outfile, delimiter=' '))[:20] # ckpt lines must be in the first 100 lines
+                for i, row in enumerate(csvreader):
+                    if row[0].startswith('RESUMING'):
+                        orig_log_path = row[-1]
+                        
+                        if os.path.isdir(orig_log_path) and len(orig_log_path) > 5:
+                            log_out_files_dict[int(job_id)] = (outfile_path, orig_log_path) 
+
+    '''
     for logdir in all_logdirs:
         matched = re.search('(2[0-9]{6})_([0-9]{4}_){2}', logdir)
         if matched:
@@ -174,11 +188,11 @@ def construct_log_out_files_dict(all_logdirs, all_outfiles, list_jobs_to_analyse
                 for outfile in all_outfiles:
                     if job_id_str in outfile:
                         log_out_files_dict[int(job_id_str)] = (outfile, logdir) 
+    '''
     return log_out_files_dict
 
 
 def find_rep_nb(log_path):
-
     matched = re.search('rep([0-9]+)', log_path)
     if matched:
         rep_nb=int(matched.group(1))

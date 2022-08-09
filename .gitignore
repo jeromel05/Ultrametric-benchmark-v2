@@ -186,3 +186,4 @@ to_merge/
 *.3
 *.5
 notebooks/failed_relaunch_jobs.txt
+*.pdf

@@ -1,14 +1,9 @@
 import os
 import re
 import numpy as np
-import torch
-import io
 import matplotlib.pyplot as plt
-import tensorflow as tf
-from matplotlib import cm
 import itertools
 from os.path import join
-import csv
 import yaml
 
 class bcolors:
@@ -22,6 +17,7 @@ class bcolors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
+'''
 def plot_to_image(figure):
     """Converts the matplotlib plot specified by 'figure' to a PNG image and
     returns it. The supplied figure is closed and inaccessible after this call."""
@@ -34,6 +30,7 @@ def plot_to_image(figure):
     image = tf.expand_dims(image, 0)
     
     return image
+'''
 
 def make_confusion_matrix_figure(cm, class_names):
     """

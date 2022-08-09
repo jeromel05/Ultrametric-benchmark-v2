@@ -196,7 +196,7 @@ class UMDataModule(pl.LightningDataModule):
         if not stoch_s_len:
             split_chain = [el for class1 in classes for el in np.random.randint(low=class1, high=class1+2, size=self.s_len)]
         else:
-            sizes = np.random.randint(low=max(int(self.s_len*0.25), 50), high=min(int(self.s_len*4), 2500), size=tot_nb_blocks)
+            sizes = np.random.randint(low=max(int(self.s_len*0.75), 50), high=min(int(self.s_len*1.25), 2500), size=tot_nb_blocks)
             split_chain = [el for class1, size1 in zip(classes, sizes) for el in np.random.randint(low=class1, high=class1+2, size=size1)]
         self.markov_chain = split_chain
 

@@ -296,20 +296,24 @@ def def_logs_path(args, new_logs=False):
 def construct_hparams_dict_from_args(args):
     hparams_from_args_dict = vars(args)
 
-    nb_classes = 2**args.max_tree_depth
     eval_freq = args.eval_freq
     eval_freq = check_eval_freq(eval_freq, args.b_len)
     print(f'Start eval_freq: {eval_freq}')
 
     if args.dataset == 'mnist':
         input_size = 28*28
+        nb_classes = 8
+        max_tree_depth = 3
     else:
         input_size = args.input_size
+        nb_classes = 2**args.max_tree_depth
+        max_tree_depth = args.max_tree_depth
 
     val_step = args.val_step
     if eval_freq < args.val_step:
         val_step = eval_freq # we evaluate at least every eval freq
 
+    hparams_from_args_dict['max_tree_depth'] = max_tree_depth
     hparams_from_args_dict['nb_classes'] = nb_classes 
     hparams_from_args_dict['last_val_acc'] = 0.0
     hparams_from_args_dict['val_step'] = val_step

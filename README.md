@@ -32,21 +32,20 @@ home
     │   │   │   └── run.py  
     │   │   └── utils  
     │   │       ├── custom_callbacks.py  
-    │   │       ├── datasets.py  
-    │   │       ├── Datasets.py  
-    │   │       ├── functions_markov.py  
-    │   │       ├── network.py  
-    |   |       ├── ultrametric_callback.py  
+    │   │       ├── datasets.py             #generate dataset
+    │   │       ├── functions_markov.py     #functions to generate the markov chain
+    │   │       ├── network.py              #setup the network and train
+    |   |       ├── ultrametric_callback.py #callbacks for the network
     │   │       ├── UltrametricTree.py  
     │   │       └── util_functions.py  
     │   ├── data    
     │   │   ├── MNIST  
     │   │   └── saved_chains  
-    │   ├── scratch  
-    │   │   ├── logs  
     │   ├── notebooks  
     │   │   ├── postprocessing_metrics.ipynb  
     │   │   ├── ultrametric_chain.ipynb  
+    ├── scratch  
+    │   ├── logs  
   ```
 
 `scripts` is where the `.run` files for launching jobs on the cluster are located.  
@@ -69,7 +68,7 @@ The run command launches an array of SLURM jobs. THis is useful for parallelisat
  4) `lr`is the learning rate
  5) `seed` is the seed number for the repetitions.
 ```
-Note that all of these fields are lists so you can easily launch multiple runs with different parameter values in a single command.
+Note that all of these fields are lists so you can easily launch multiple runs with different parameter values in a single command. The `launch_arr.run` file then calls the file `um_arr.run` for each individual run.
  
 
 And the command line options are as follows:  
@@ -107,11 +106,15 @@ The logging system is structured as follows:
         │   │           └── hparams.yaml
 ```
 In the log folder name, we have `{job_id}_{time}_{date}_{ds_name}_{mode}_b{b_len}_d{depth}_{stochasticity}{s_len}_{h}_{lr}_rep{seed}`.
-Then we have the folder `fold_{seed}_part_{relaunch_nb}'. Then the `.1`are the actual logs, and `hparams.yaml` contains the hyperparameters used 
+Then we have the folder `fold_{seed}_part_{relaunch_nb}`. Then the `.1`are the actual logs, and `hparams.yaml` contains the hyperparameters used 
 for this run.
 
+We recommend downloading the logs from the cluster using `scp -r user@hostname:home/scratch/logs $LOCAL_PATH/logs`.
 
+## plots
 
+All the plots in the paper are generated in `ultrametric_chain.ipynb` for the auto-correlation plots (function `plot_autocorr`), and in `postprocessing_metrics.ipynb` for the 
+validation accuracy curves (function `plot_runs_w_regex`) and derived metrics (function `summary_plot`).
 
 
 

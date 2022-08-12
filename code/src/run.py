@@ -53,42 +53,42 @@ def run():
     parser.add_argument('--verbose', type=int, default=0, help="define level of verbosity")
     parser.add_argument('--dataset', type=str, default="synth", help="define datset to use")
 
-    parser.add_argument('--input_size', type=int, default=200, help="define level of verbosity")
-    parser.add_argument('--batch_size_train', type=int, default=2, help="define level of verbosity")
-    parser.add_argument('--batch_size_test', type=int, default=1000, help="define level of verbosity")
-    parser.add_argument('--max_tree_depth', type=int, default=5, help="define level of verbosity")
-    parser.add_argument('--noise_level', type=int, default=50, help="define level of verbosity")
-    parser.add_argument('--p_flip', type=float, default=0.1, help="define level of verbosity")
-    parser.add_argument('--p_noise', type=float, default=0.02, help="define level of verbosity")
+    parser.add_argument('--input_size', type=int, default=200, help="define the size of inputs (tree leaves)")
+    parser.add_argument('--batch_size_train', type=int, default=2, help="define the train batch size")
+    parser.add_argument('--batch_size_test', type=int, default=1000, help="define the test batch size")
+    parser.add_argument('--max_tree_depth', type=int, default=5, help="define maximum treedepth")
+    parser.add_argument('--noise_level', type=int, default=50, help="define the level of noise in the dataset")
+    parser.add_argument('--p_flip', type=float, default=0.1, help="define the probability of flipping bits at each tree node")
+    parser.add_argument('--p_noise', type=float, default=0.02, help="define the probability in bit flipping for noisy samples")
 
-    parser.add_argument('--hidden_size', type=int, default=200, help="define level of verbosity")
-    parser.add_argument('--lr', type=float, default=1.0, help="define level of verbosity")
-    parser.add_argument('--max_epochs', type=int, default=100, help="define level of verbosity")
-    parser.add_argument('--generate_chain', action='store_true', help="define level of verbosity")
-    parser.add_argument('--nb_folds', type=int, default=1, help="define level of verbosity")
-    parser.add_argument('-T', '--temperature', type=float, default=0.4, help="define level of verbosity")
-    parser.add_argument('--mode', type=str, default='rand', choices=['rand', 'um', 'split'], help="Folder to save the data")
-    parser.add_argument('--num_workers', type=int, default=4, help="define level of verbosity")
-    parser.add_argument('--b_len', type=int, default=0, help="if b_len > 0 -> do shuffles")
-    parser.add_argument('--normalize_data', action='store_true', help="define level of verbosity")
-    parser.add_argument('--test_split', type=float, default=0.2, help="define level of verbosity")
-    parser.add_argument('--optimizer', type=str, default="sgd", choices=['sgd', 'adam'], help="define datset to use")
-    parser.add_argument('--metric', type=str, default="val_loss", choices=['val_acc', 'val_loss', 'train_acc'], help="define datset to use")
-    parser.add_argument('--auto_lr_find', action='store_true', help="define level of verbosity")
-    parser.add_argument('--lr_scheduler', type=str, default=None, choices=['reduce_lr'], help="define datset to use")
-    parser.add_argument('--eval_freq', type=int, default=200, help="define level of verbosity")
-    parser.add_argument('--eval_freq_factor', type=float, default=1.4, help="define level of verbosity")
-    parser.add_argument('--job_id', type=str, default="", help="define level of verbosity")
-    parser.add_argument('--early_stop', action='store_true', help="define level of verbosity")
-    parser.add_argument('--start_seed', type=int, default=0, help="define level of verbosity")
-    parser.add_argument('--show_progbar', action='store_true', help="define level of verbosity")
+    parser.add_argument('--hidden_size', type=int, default=200, help="define the number of hidden units in the network")
+    parser.add_argument('--lr', type=float, default=1.0, help="define the learning rate")
+    parser.add_argument('--max_epochs', type=int, default=100, help="define the max epochs to run before stop")
+    parser.add_argument('--generate_chain', action='store_true', help="define if we generate a markov chain")
+    parser.add_argument('--nb_folds', type=int, default=1, help="define the number of repetitions to run")
+    parser.add_argument('-T', '--temperature', type=float, default=0.4, help="define the temperature parameter for the markov chain")
+    parser.add_argument('--mode', type=str, default='rand', choices=['rand', 'um', 'split'], help="Define which mode to run in")
+    parser.add_argument('--num_workers', type=int, default=4, help="number of workers to load the data")
+    parser.add_argument('--b_len', type=int, default=0, help="if b_len > 0 -> do shuffles, size of shuffle blocks")
+    parser.add_argument('--normalize_data', action='store_true', help="Whether to normalize the data vectors")
+    parser.add_argument('--test_split', type=float, default=0.2, help="percentage of data in test split")
+    parser.add_argument('--optimizer', type=str, default="sgd", choices=['sgd', 'adam'], help="which optimiser to use")
+    parser.add_argument('--metric', type=str, default="val_loss", choices=['val_acc', 'val_loss', 'train_acc'], help="which metric to monitor for callbacks")
+    parser.add_argument('--auto_lr_find', action='store_true', help="do a mini run to choose the lr automatically")
+    parser.add_argument('--lr_scheduler', type=str, default=None, choices=['reduce_lr'], help="use the reduce learning rate on plateau callback")
+    parser.add_argument('--eval_freq', type=int, default=200, help="validation and restart frequency")
+    parser.add_argument('--eval_freq_factor', type=float, default=1.4, help="exponential growth factor for the validation frequency")
+    parser.add_argument('--job_id', type=str, default="", help="job id for log folder")
+    parser.add_argument('--early_stop', action='store_true', help="use early stopping callback")
+    parser.add_argument('--start_seed', type=int, default=0, help="starting seed")
+    parser.add_argument('--show_progbar', action='store_true', help="whether to show the progress bar in an epoch")
     parser.add_argument('--no_reshuffle', action='store_true', help="true means eval only at one point")
-    parser.add_argument('--save_ckpt', action='store_true', default=False, help="define level of verbosity")
-    parser.add_argument('--last_val_step', type=int, default=0, help="define level of verbosity")
-    parser.add_argument('--s_len', type=int, default=400, help="block lenght for split protocol")
-    parser.add_argument('--val_step', type=int, default=100, help="Determines steps btw validations")
-    parser.add_argument('--keep_correlations', action='store_true', help="true means eval only at one point")
-    parser.add_argument('--stoch_s_len', action='store_true', help="true means eval only at one point")
+    parser.add_argument('--save_ckpt', action='store_true', default=False, help="whether to save the model checkpoint")
+    parser.add_argument('--last_val_step', type=int, default=0, help="If we restart, from which validation step we do so")
+    parser.add_argument('--s_len', type=int, default=400, help="split length for split protocol")
+    parser.add_argument('--val_step', type=int, default=100, help="Determines steps btw validation loops")
+    parser.add_argument('--keep_correlations', action='store_true', help="true means we keep spatial correlations in the dataset")
+    parser.add_argument('--stoch_s_len', action='store_true', help="true means we have a stochastic s_len")
     parser.add_argument('--ckpt_path', type=str, default='', help="Folder where ckpt to load is saved")
 
     args = parser.parse_args()
@@ -198,23 +198,29 @@ def run():
         print(f"{bcolors.OKGREEN}Fold {seed} computed in {(end_time-start_time)/60:.3}min {bcolors.ENDC}")
 
 def create_data_modules(args):
-        if args.dataset == 'mnist':
-            data_module = MnistDataModule(data_dir=args.datafolder, mode=args.mode, 
-                                    batch_size_train=args.batch_size_train, batch_size_test=args.batch_size_test,
-                                    num_workers=args.num_workers, 
-                                    normalization_transform=transforms.Normalize((0.1307,), (0.3081,)),  
-                                    b_len=args.b_len, no_reshuffle=args.no_reshuffle, s_len=args.s_len, keep_correlations=args.keep_correlations)
-        elif args.dataset == 'synth':
-            data_module = SynthDataModule(data_dir=args.datafolder, mode=args.mode, 
-                                        batch_size_train=args.batch_size_train, batch_size_test=args.batch_size_test, 
-                                        num_workers=args.num_workers, max_depth=args.max_tree_depth, 
-                                        noise_level=args.noise_level, p_flip=args.p_flip, p_noise=args.p_noise, 
-                                        leaf_length=args.input_size, normalize_data=args.normalize_data, 
-                                        test_split=args.test_split, b_len=args.b_len,
-                                        no_reshuffle=args.no_reshuffle, s_len=args.s_len, keep_correlations=args.keep_correlations)
-        return data_module
+    """
+    Creates data_modules to load the data
+    """
+    if args.dataset == 'mnist':
+        data_module = MnistDataModule(data_dir=args.datafolder, mode=args.mode, 
+                                batch_size_train=args.batch_size_train, batch_size_test=args.batch_size_test,
+                                num_workers=args.num_workers, 
+                                normalization_transform=transforms.Normalize((0.1307,), (0.3081,)),  
+                                b_len=args.b_len, no_reshuffle=args.no_reshuffle, s_len=args.s_len, keep_correlations=args.keep_correlations)
+    elif args.dataset == 'synth':
+        data_module = SynthDataModule(data_dir=args.datafolder, mode=args.mode, 
+                                    batch_size_train=args.batch_size_train, batch_size_test=args.batch_size_test, 
+                                    num_workers=args.num_workers, max_depth=args.max_tree_depth, 
+                                    noise_level=args.noise_level, p_flip=args.p_flip, p_noise=args.p_noise, 
+                                    leaf_length=args.input_size, normalize_data=args.normalize_data, 
+                                    test_split=args.test_split, b_len=args.b_len,
+                                    no_reshuffle=args.no_reshuffle, s_len=args.s_len, keep_correlations=args.keep_correlations)
+    return data_module
 
 def find_lr(trainer, model, checkpoint_path_fold, data_module):
+    """
+    Finds the learning rate automatically using a built-in pytorch function
+    """
     lr_finder = trainer.tuner.lr_find(model, datamodule=data_module)
     print(f"Suggested_lr {lr_finder.suggestion()}")
     fig = lr_finder.plot(suggest=True)

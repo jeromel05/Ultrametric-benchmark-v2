@@ -187,3 +187,5 @@ to_merge/
 *.5
 notebooks/failed_relaunch_jobs.txt
 *.pdf
+notebooks/Ultrametric_tree.ipynb
+notebooks/Ultrametric_tree.ipynb

@@ -228,6 +228,9 @@ def find_lr(trainer, model, checkpoint_path_fold, data_module):
     return lr_finder.suggestion()
 
 def def_callbacks(args, checkpoint_path, seed):
+    """
+    Definition of Callbacks according to the parameters the user has given in args.
+    """
     callbacks=[]
     checkpoint_callback=None
     checkpoint_folder_name = f"fold_{seed}/"
@@ -264,6 +267,9 @@ def def_callbacks(args, checkpoint_path, seed):
     return callbacks, checkpoint_callback
 
 def def_logs_path(args, new_logs=False):
+    """
+    Definition of the log path for saving the logs
+    """
     if new_logs or len(args.ckpt_path) == 0:
         now = datetime.now()
         dt_string = now.strftime("%d%m_%H%M")
@@ -300,6 +306,11 @@ def def_logs_path(args, new_logs=False):
     return logs_path
 
 def construct_hparams_dict_from_args(args):
+    """
+    Constructs a dictionary that stores all the hyperparameters.
+    It takes information from the checkpoint paths's hparams.yaml file and merges
+    it with the args dict the user passes.
+    """
     hparams_from_args_dict = vars(args)
 
     eval_freq = args.eval_freq
@@ -332,6 +343,9 @@ def construct_hparams_dict_from_args(args):
     return hparams_from_args_dict
 
 def check_eval_freq(eval_freq, b_len):
+    """
+    Checks if the user-defined evaluation frequency respects certain boundary conditions
+    """
     if eval_freq < b_len: 
         eval_freq = b_len
     elif b_len > 0: 

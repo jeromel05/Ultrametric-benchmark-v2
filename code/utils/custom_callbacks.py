@@ -11,7 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-r"""
+"""
 Early Stopping
 ^^^^^^^^^^^^^^
 
@@ -34,7 +34,9 @@ log = logging.getLogger(__name__)
 
 class Custom_EarlyStopping(Callback):
     r"""
-    Monitor a metric and stop training when it stops improving.
+    Monitor a metric and stop training when it stops improving. We sliglty modify the original
+    PyTorch Lightning Callback in order to suit our UM protocol which has a different way of counting
+    steps due to the restarts.
 
     Args:
         monitor: quantity to be monitored.

@@ -71,6 +71,10 @@ class SynthPredictDataset(Dataset):
         return sample 
 
 class UltraMetricSampler(torch.utils.data.Sampler):
+    """
+    We create an UM sampler that draws samples in an UM order. The sampler has two modes, with and
+    without replacement, they are used in the UM and the split case respectively.
+    """
     def __init__(self, data_source, chain, class_index, nb_classes, batch_size_train, b_len=0, 
                 with_replacement=False, epoch_size=1000):
         self.data_source = data_source
@@ -146,6 +150,9 @@ class UltraMetricSampler(torch.utils.data.Sampler):
 
 
 class UMDataModule(pl.LightningDataModule):
+    """
+    Class for the ultrametric DataModule
+    """
     def __init__(self, b_len: int, max_depth: int, data_dir: str = "./", batch_size_train: int=2, batch_size_test: int=1000, 
                  num_workers: int=4, mode: str='rand', chain=None, no_reshuffle=False, s_len=500, keep_correlations=False):
         super().__init__()
@@ -177,6 +184,9 @@ class UMDataModule(pl.LightningDataModule):
                           num_workers=self.num_workers, sampler=self.test_sampler)
     
     def set_markov_chain(self, args, seed):
+        """
+        Either loads the UM chain if it is on the cluster or generates one with the user-defined args
+        """
         if args.generate_chain:
             self.markov_chain = generate_markov_chain(chain_length=args.total_sample_nb, T=args.T, 
                                                 tree_levels=args.max_tree_depth, dia=0).tolist()
@@ -190,6 +200,9 @@ class UMDataModule(pl.LightningDataModule):
             self.markov_chain[:10000] = shuffle_blocks_v2(self.markov_chain[:10000], self.b_len)
 
     def set_split_chain(self, stoch_s_len=False):
+        """
+        Here we create the split chain for the split protocol.
+        """
         split_chain = []
         tot_nb_blocks=10000
         classes = np.random.choice(np.arange(0, self.nb_classes-1, step=2), size=tot_nb_blocks)

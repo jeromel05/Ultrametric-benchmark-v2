@@ -3,7 +3,14 @@ import matplotlib.pyplot as plt
 import random
 from tqdm.notebook import trange, tqdm
 
+"""
+    This file contains all the functions necessary to create and analyse UM markov chains.
+"""
+    
 def fillmarkov(m,i1,j1,l,md):
+    """
+    Fills the Markov transitions matrix
+    """
     l2=int(l/2)
     for i in range(i1, (i1+l2)):
         for j in range(j1, (j1+l2)):
@@ -19,6 +26,9 @@ def fillmarkov(m,i1,j1,l,md):
     return m
 
 def compute_P_0(maxh, tree_l, chain, verbose=0):
+    """
+    Computes the autocorrelation function for a given markov chain
+    """
     if verbose>0: print("Computing P_0...")
     P0=np.zeros(maxh)
 
@@ -31,6 +41,9 @@ def compute_P_0(maxh, tree_l, chain, verbose=0):
     return P0, P0stat
 
 def compute_P0_inner_loop(i, P0, chain, tree_l, maxh):
+    """
+    Inner loop user to compute the auto-correlations. Useful for multiprocessing.
+    """
     P0stat=np.zeros(maxh)
     locs=np.where(chain==i)[0] #find all occurrences of i
     if locs.shape[0] == 0: 
@@ -47,6 +60,9 @@ def compute_P0_inner_loop(i, P0, chain, tree_l, maxh):
     return P0stat
 
 def plot_P0(P0stat):
+    """
+    Plots the autocorrelation function on a log-log scale.
+    """
     xv=np.concatenate(([1], np.arange(2, P0stat.shape[0], 2))) 
     # plot only initial value and even values to remove oscillations
     h=plt.plot(xv, P0stat[xv],'r-')
@@ -58,6 +74,10 @@ def plot_P0(P0stat):
     plt.show()
 
 def normalize_matrix(dia, tree_l, markovme):
+    """
+    Normalizes the Markov transition matrix for the random walk on the UM chain.
+    We have the option to set the diagonals to 0 to avoid revisting the same state twice.
+    """
     if(dia==0):
         for i in range(0, tree_l):
             tot=np.sum(markovme[i])-1 # don't count the diagonal terms (which are ones)
@@ -73,6 +93,9 @@ def normalize_matrix(dia, tree_l, markovme):
     return markovme
 
 def generate_chain(markovme, chain_length, verbose=0):
+    """
+    Generates a Markov chain of a given length based on the given markovme transition matrix.
+    """
     chain=np.zeros((chain_length), dtype=np.int32)
     chain[0]=1
     if verbose>0: print("Generating Markov chain...")
@@ -86,6 +109,11 @@ def generate_chain(markovme, chain_length, verbose=0):
     return chain
 
 def generate_markov_chain(chain_length=500000, T=0.2, tree_levels=3, dia=0):
+    """
+    Wrapper for the generate_chain function above that also creates the transtion matrix with
+    the given arguments:
+    chain_length (list:int), temperature (float), tree levels (int), diagonal value (float)
+    """
     tree_l=2**tree_levels # number of leaves
     markovm=np.zeros((tree_l,tree_l))
     
@@ -97,6 +125,10 @@ def generate_markov_chain(chain_length=500000, T=0.2, tree_levels=3, dia=0):
     return chain 
 
 def shuffle_blocks_v2(chain, b_len):
+    """
+    Block shuffling function
+    This function take a chain (list:int), and then shuffles it with blocks of size b_len (int).
+    """
     shuff_chain = chain.copy() #bc we modifiy in-place afterward
     blocks = [shuff_chain[i:i+b_len] for i in range(0,len(shuff_chain),b_len)]
     np.random.shuffle(blocks)

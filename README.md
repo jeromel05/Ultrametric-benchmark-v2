@@ -93,7 +93,7 @@ and create the appropriate relaunch commands to resume these runs. You have to g
 You have to put in the intervall in job_ids that you would like to consider for relaunch, and then do `sbatch launch_collect.run`.
 This will create a file named `relaunch_commands.txt` which contains the commands to be relaunched. To relaunch them, simply do `sbatch launch_sbatch.run`.
 
-## logs
+## Logs
 
 The logging system is structured as follows:
 ```
@@ -110,7 +110,7 @@ for this run.
 
 We recommend downloading the logs from the cluster using `scp -r user@hostname:home/scratch/logs $LOCAL_PATH/logs`.
 
-## plots
+## Plots
 
 All the plots in the paper are generated in `ultrametric_chain.ipynb` for the auto-correlation plots (function `plot_autocorr`), and in `postprocessing_metrics.ipynb` for the 
 validation accuracy curves (function `plot_runs_w_regex`) and derived metrics (function `summary_plot`).

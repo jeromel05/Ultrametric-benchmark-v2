@@ -52,32 +52,31 @@ home
 
 ## Install
 
-In order to install the repo please clone is to your local machine. Then upload it to your GPU cluster (the code will also run on CPU albeit very slowly). Upload using the command: `scp -r $LOCAL_PATH/repo user@hostname:$REMOTE_PATH/`. Then you will have to install Ananconda on your remote cluster. Then install the included conda environment in order to have access to the necessary packages. This is done with `conda env create -f home/env/env1_no_builds.yml`. 
-For the datasets, you will have to upload the MNIST dataset to the dedicated MNIST folder. For the artificial dataset you will have to generate the corresponding UM chains in `ultrametric_chain.ipynb` in the chapter generate sequences to save. Please upload these chains to the cluster as well, under `home/data/saved_chains`. The code will also create a chain on the sport if none is provided but it is better to work with pre-computed chains for efficiency.
+In order to install the repo please clone it to your local machine. Then upload it to your GPU cluster (the code will also run on CPU albeit very slowly). Upload using the command: `scp -r $LOCAL_PATH/repo user@hostname:$REMOTE_PATH/`. Then you will have to install Ananconda on your remote cluster. Then install the included conda environment in order to have access to the necessary packages. This is done with `conda env create -f home/env/env1_no_builds.yml`. 
+For the datasets, you will have to upload the MNIST dataset to the dedicated MNIST folder. For the artificial dataset you will have to generate the corresponding UM chains in `ultrametric_chain.ipynb` in the chapter "generate sequences to save". Please upload these chains to the cluster as well, under `home/data/saved_chains`. The code will also create a chain on the spot if none is provided but it is better to work with pre-computed chains for efficiency.
 The install is now complete
 
 ## Run
 
 The run command launches an array of SLURM jobs. THis is useful for parallelisation. The commands is structured as follows:  
-`sbatch launch_arr.run -e 200 -f 1.9 -m "split" -s 400 -l true "60" "400 700 1400 2100" "5" "2.0" "0 1 2 3 4 5"`
- where after the named command line options:  
+`sbatch launch_arr.run -e 200 -f 1.9 -m "split" -s 400 -l true "h" "b_len" "d" "lr" "seed"`
+ where after the named command line options in order:  
  ```
- 1) `h` is the number of hidden neurons in the hidden layer.  
- 2) `b_len` is the length of the shuffling blocks.
- 3) `d` is the tree depth
- 4) `lr`is the learning rate
- 5) `seed` is the seed number for the repetitions.
+ 1) `h`: int, is the number of hidden neurons in the hidden layer.  
+ 2) `b_len`: int, is the length of the shuffling blocks.
+ 3) `d`: int, is the tree depth
+ 4) `lr`: float, is the learning rate
+ 5) `seed`: int, is the seed number for the repetitions.
 ```
 Note that all of these fields are lists so you can easily launch multiple runs with different parameter values in a single command. The `launch_arr.run` file then calls the file `um_arr.run` for each individual run.
- 
 
-And the command line options are as follows:  
+And the named command line options are as follows:  
 ```
 e) eval_freq : int, frequency at which we evaluate the model and shuffle the sequence.  
 f) ef_factor : float, exponential growth factor for eval_freq.  
-m) mode : string, one of "um" (ultrametric), "split" or "rand" completely ranodmised case.  
+m) mode : string, one of "um" (ultrametric), "split" or "rand" for the completely ranodmised case.  
 s) s_len : int (optional), for the split case it is the length of the splits.  
-c) ckpt_path : string (optional), in the case of the restart of a previous interrupted run, it is the checkpoint path from which we want to restart.  
+c) ckpt_path : string (optional), in the case of the restart of a previous interrupted run, it is the checkpoint path from which we want to restart.
 k) keep_correlations : bool (optional), whether we want to keep the spatial correlations in the dataset, default=False.  
 l) stoch_s_len : bool (optional), whether to include some stochasticity in the s_len parameter, default=False.  
 ```
@@ -106,7 +105,7 @@ The logging system is structured as follows:
         │   │           └── hparams.yaml
 ```
 In the log folder name, we have `{job_id}_{time}_{date}_{ds_name}_{mode}_b{b_len}_d{depth}_{stochasticity}{s_len}_{h}_{lr}_rep{seed}`.
-Then we have the folder `fold_{seed}_part_{relaunch_nb}`. Then the `.1`are the actual logs, and `hparams.yaml` contains the hyperparameters used 
+Then we have the folder `fold_{seed}_part_{relaunch_nb}`. Then the `.1` file is the actual logs, and `hparams.yaml` contains the hyperparameters used 
 for this run.
 
 We recommend downloading the logs from the cluster using `scp -r user@hostname:home/scratch/logs $LOCAL_PATH/logs`.

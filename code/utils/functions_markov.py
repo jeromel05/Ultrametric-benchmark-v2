@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import random
-from tqdm.notebook import trange, tqdm
+from tqdm.auto import trange, tqdm
 
 """
     This file contains all the functions necessary to create and analyse UM markov chains.
@@ -92,23 +92,27 @@ def normalize_matrix(dia, tree_l, markovme):
             
     return markovme
 
-def generate_chain(markovme, chain_length, verbose=0):
+def generate_chain(markovme, chain_length, verbose=0, seed=None):
     """
     Generates a Markov chain of a given length based on the given markovme transition matrix.
+    All randomness comes from a numpy Generator seeded with `seed`, so a chain is fully
+    determined by (markovme, chain_length, seed).
     """
+    rng = np.random.default_rng(seed)
     chain=np.zeros((chain_length), dtype=np.int32)
     chain[0]=1
     if verbose>0: print("Generating Markov chain...")
+    uniforms = rng.random(chain_length)
     for i in range(1, chain_length):
         this_step_distribution = markovme[int(chain[i-1])]
         cumulative_distribution = np.cumsum(this_step_distribution)
-        r = np.random.rand(1)[0]
+        r = uniforms[i]
         if np.any(cumulative_distribution>r):
             chain[i] = np.argmax(cumulative_distribution>r)
         
     return chain
 
-def generate_markov_chain(chain_length=500000, T=0.2, tree_levels=3, dia=0):
+def generate_markov_chain(chain_length=500000, T=0.2, tree_levels=3, dia=0, seed=None):
     """
     Wrapper for the generate_chain function above that also creates the transtion matrix with
     the given arguments:
@@ -121,7 +125,7 @@ def generate_markov_chain(chain_length=500000, T=0.2, tree_levels=3, dia=0):
     markovme=np.exp(-markovm/T)
     markovme = normalize_matrix(dia, tree_l, markovme)
     # generate the markov chain
-    chain = generate_chain(markovme, chain_length, verbose=1)
+    chain = generate_chain(markovme, chain_length, verbose=1, seed=seed)
     return chain 
 
 def shuffle_blocks_v2(chain, b_len):

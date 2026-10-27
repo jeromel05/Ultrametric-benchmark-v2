@@ -188,8 +188,8 @@ class UMDataModule(pl.LightningDataModule):
         Either loads the UM chain if it is on the cluster or generates one with the user-defined args
         """
         if args.generate_chain:
-            self.markov_chain = generate_markov_chain(chain_length=args.total_sample_nb, T=args.T, 
-                                                tree_levels=args.max_tree_depth, dia=0).tolist()
+            self.markov_chain = generate_markov_chain(chain_length=1000000, T=args.temperature,
+                                                tree_levels=args.max_tree_depth, dia=0, seed=seed).tolist()
         else:
             saved_chain_name = f'saved_chains/tree_levels{args.max_tree_depth:02d}_clen1.0e+06_seed{seed:}.npy'
             path_to_data = join(os.getcwd(), args.datafolder, saved_chain_name)

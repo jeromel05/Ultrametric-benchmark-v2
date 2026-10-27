@@ -54,7 +54,7 @@ class FFNetwork(pl.LightningModule):
 
     def on_fit_start(self) -> None:
         if self.n_runs < 1 and self.curr_reset_step > 0 and self.hparams.b_len > 0:
-            until_idx = self.curr_reset_step + self.curr_eval_freq
+            until_idx = self.steps_to_samples(self.curr_reset_step + self.curr_eval_freq)
             print(f'FIRST RUN: {bcolors.OKGREEN}Chain SHUFFLED UNTIL: : {until_idx}, curr_eval_freq: {self.curr_eval_freq}{bcolors.ENDC}')
             self.reset_network_sampler(until_idx=until_idx)
         return super().on_fit_start()
@@ -187,7 +187,7 @@ class FFNetwork(pl.LightningModule):
                 if self.n_runs > 2:
                     self.adjust_eval_freq(val_acc)
 
-                until_idx=self.curr_val_step + self.curr_eval_freq
+                until_idx=self.steps_to_samples(self.curr_val_step + self.curr_eval_freq)
                 print(f'{bcolors.OKGREEN}Chain SHUFFLED UNTIL: : {until_idx}, curr_eval_freq: {self.curr_eval_freq}{bcolors.ENDC}')
                 self.update_hparams() 
                 self.reset_network_sampler(until_idx=until_idx)
@@ -221,6 +221,14 @@ class FFNetwork(pl.LightningModule):
         else:
             tensorboard.add_figure("val_cf_mat", val_cf_mat, global_step=self.global_step)
             tensorboard.add_figure("val_roc_curve", val_roc_curve, global_step=self.global_step)
+
+    def steps_to_samples(self, n_steps):
+        """
+        The chain is indexed in samples while the trainer counts optimizer steps.
+        A restarted network trains for n_steps steps, i.e. n_steps * batch_size chain entries,
+        all of which must lie in the shuffled part of the chain.
+        """
+        return int(n_steps) * self.hparams.batch_size_train
 
     def reset_network_sampler(self, until_idx=None): 
         self.trainer.datamodule.train_dataloader().sampler.reset_sampler(until_idx)

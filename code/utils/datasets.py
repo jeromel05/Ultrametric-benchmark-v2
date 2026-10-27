@@ -88,6 +88,7 @@ class UltraMetricSampler(torch.utils.data.Sampler):
         self.um_indexes = []
         self.with_replacement = with_replacement
         self.epoch_size = epoch_size
+        self.generation = 0 # incremented at every reset to invalidate in-flight epochs
 
     def __iter__(self):
         idx = self.total_length
@@ -99,7 +100,17 @@ class UltraMetricSampler(torch.utils.data.Sampler):
 
         self.um_indexes = self.remove_excess_samples(um_indexes)
         self.total_length += len(self.um_indexes)
-        return iter(self.um_indexes)
+        return self._iterate(self.um_indexes, self.generation)
+
+    def _iterate(self, um_indexes, generation):
+        """
+        Yields the indexes of the current epoch, but stops as soon as the sampler is reset,
+        so that a freshly initialised network never sees samples of the pre-reset sequence.
+        """
+        for um_idx in um_indexes:
+            if self.generation != generation:
+                return
+            yield um_idx
 
     def __len__(self):
         return len(self.data_source)
@@ -146,7 +157,8 @@ class UltraMetricSampler(torch.utils.data.Sampler):
             self.temp_shuff_chain[:until_idx] = shuffle_blocks_v2(self.chain[:until_idx], self.b_len)
         else:
             self.temp_shuff_chain[:self.total_length] = shuffle_blocks_v2(self.chain[:self.total_length], self.b_len)
-        self.total_length = 0        
+        self.total_length = 0
+        self.generation += 1
 
 
 class UMDataModule(pl.LightningDataModule):

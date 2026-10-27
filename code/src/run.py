@@ -277,7 +277,7 @@ def def_logs_path(args, new_logs=False):
             tree_depth_str = ''
         elif args.dataset == 'synth':
             tree_depth_str = f'_d{args.max_tree_depth}'
-        if args.mode == 'um':
+        if args.mode in ('um', 'rand'):
             s_len_str = ''
         elif args.mode == 'split':
             s_len_str = f'_s{args.s_len}'
@@ -292,15 +292,15 @@ def def_logs_path(args, new_logs=False):
         logs_path = os.path.join(args.logfolder, ckpt_name)
 
     else: # we store our logs in the same dir as the previous ckpt
-        matched = re.search('(2[0-9]{6}_([0-9]{4}_){2}(?:synth|mnist)_(?:um|split|rand)_[a-z0-9._]+_rep[0-9]+)', args.ckpt_path)
+        matched = re.search('([0-9]+_([0-9]{4}_){2}(?:synth|mnist)_(?:um|split|rand)_[a-z0-9._]+_rep[0-9]+)', args.ckpt_path)
         if matched:
             logs_name = matched.group(1)
             logs_path = os.path.join(args.logfolder, logs_name)
+            assert(os.path.isdir(logs_path))
         else:
             print('Old logs not found, creating new log folder')
-            def_logs_path(args, new_logs=True)
+            logs_path = def_logs_path(args, new_logs=True)
         print(logs_path)
-        assert(os.path.isdir(logs_path))
 
     print(f"Saving logs at: {logs_path}")
     return logs_path

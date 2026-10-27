@@ -91,6 +91,8 @@ def print_metrics(acc, ap, auroc_, cf_mat, roc_curve, seed=0, do_print=False, sa
 def find_ckpt(ckpt_dir, mode='recent'):
     best_val = 0
     best_ckpt = ''
+    if mode == 'recent' and os.path.isfile(join(ckpt_dir, 'last.ckpt')):
+        return 'last.ckpt' # last.ckpt has no step in its name but is always the most recent
     if os.path.isdir(ckpt_dir):
         candidate_ckpts = os.listdir(ckpt_dir)
         for cd_ckpt in candidate_ckpts:

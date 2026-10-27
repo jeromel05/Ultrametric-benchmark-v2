@@ -89,6 +89,7 @@ class UltraMetricSampler(torch.utils.data.Sampler):
         self.with_replacement = with_replacement
         self.epoch_size = epoch_size
         self.generation = 0 # incremented at every reset to invalidate in-flight epochs
+        self.position = 0 # chain position of the last sample handed out
 
     def __iter__(self):
         idx = self.total_length
@@ -100,17 +101,26 @@ class UltraMetricSampler(torch.utils.data.Sampler):
 
         self.um_indexes = self.remove_excess_samples(um_indexes)
         self.total_length += len(self.um_indexes)
-        return self._iterate(self.um_indexes, self.generation)
+        return self._iterate(self.um_indexes, self.generation, idx)
 
-    def _iterate(self, um_indexes, generation):
+    def _iterate(self, um_indexes, generation, start_position):
         """
         Yields the indexes of the current epoch, but stops as soon as the sampler is reset,
         so that a freshly initialised network never sees samples of the pre-reset sequence.
+        Keeps track of the chain position reached, so that it can be stored in checkpoints.
         """
-        for um_idx in um_indexes:
+        for i, um_idx in enumerate(um_indexes):
             if self.generation != generation:
                 return
+            self.position = start_position + i + 1
             yield um_idx
+
+    def restore_position(self, position):
+        """
+        Continue the chain where a checkpointed run stopped instead of restarting it at 0.
+        """
+        self.total_length = position
+        self.position = position
 
     def __len__(self):
         return len(self.data_source)

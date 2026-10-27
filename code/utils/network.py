@@ -59,6 +59,24 @@ class FFNetwork(pl.LightningModule):
             self.reset_network_sampler(until_idx=until_idx)
         return super().on_fit_start()
     
+    def on_save_checkpoint(self, checkpoint) -> None:
+        sampler = self.trainer.datamodule.train_sampler
+        if sampler is not None:
+            checkpoint['sampler_position'] = sampler.position
+
+    def on_load_checkpoint(self, checkpoint) -> None:
+        self.resume_sampler_position = checkpoint.get('sampler_position')
+
+    def on_train_start(self) -> None:
+        # when resuming, continue the chain where the checkpointed run stopped
+        position = getattr(self, 'resume_sampler_position', None)
+        sampler = self.trainer.datamodule.train_sampler
+        if position is not None and sampler is not None:
+            print(f'{bcolors.OKGREEN}Resuming chain at position {position}{bcolors.ENDC}')
+            sampler.restore_position(position)
+            self.resume_sampler_position = None
+        return super().on_train_start()
+
     def loss_func(self):
         return nn.BCELoss()
 

@@ -32,6 +32,7 @@ from torchvision import transforms
 import pytorch_lightning as pl
 from pytorch_lightning.loggers import TensorBoardLogger
 from pytorch_lightning.callbacks import ModelCheckpoint, EarlyStopping, TQDMProgressBar, LearningRateMonitor
+from pytorch_lightning.tuner import Tuner
 
 if debug:
     print(f'step_torch_pl {time.time()-start_time:.2}')
@@ -154,7 +155,7 @@ def run():
                     version_name = f'fold_{seed}_part{part_nb}'
                     break
         logger = TensorBoardLogger(logs_path, name=f"metrics", version=version_name)
-        trainer = pl.Trainer(default_root_dir=logs_path, gpus=args.gpu, 
+        trainer = pl.Trainer(default_root_dir=logs_path, accelerator='auto' if args.gpu > 0 else 'cpu', devices=1,
                         num_nodes=1, precision=32, logger=logger, max_epochs=args.max_epochs,
                         callbacks=callbacks,
                         check_val_every_n_epoch=1, 
@@ -221,7 +222,7 @@ def find_lr(trainer, model, checkpoint_path_fold, data_module):
     """
     Finds the learning rate automatically using a built-in pytorch function
     """
-    lr_finder = trainer.tuner.lr_find(model, datamodule=data_module)
+    lr_finder = Tuner(trainer).lr_find(model, datamodule=data_module)
     print(f"Suggested_lr {lr_finder.suggestion()}")
     fig = lr_finder.plot(suggest=True)
     fig.savefig(join(checkpoint_path_fold, "lr_plot.jpg"))
@@ -258,7 +259,7 @@ def def_callbacks(args, checkpoint_path, seed):
                         mode="max", stopping_threshold=stopping_threshold, patience=patience, strict=True))
 
     if not args.show_progbar:
-        progressbar_callback = TQDMProgressBar(refresh_rate=0, process_position=0)
+        progressbar_callback = TQDMProgressBar(refresh_rate=0)
         callbacks.append(progressbar_callback)
     if args.lr_scheduler: # Activate lr monitor
         lr_callback = LearningRateMonitor(logging_interval='epoch', log_momentum=False)

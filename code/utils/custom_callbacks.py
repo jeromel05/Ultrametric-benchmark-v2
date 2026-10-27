@@ -25,7 +25,7 @@ import numpy as np
 import torch
 
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks.base import Callback
+from pytorch_lightning.callbacks import Callback
 from pytorch_lightning.utilities.exceptions import MisconfigurationException
 
 log = logging.getLogger(__name__)
@@ -119,7 +119,7 @@ class Custom_EarlyStopping(Callback):
             raise MisconfigurationException(f"`mode` can be {', '.join(self.mode_dict.keys())}, got {self.mode}")
 
         self.min_delta *= 1 if self.monitor_op == torch.gt else -1
-        torch_inf = torch.tensor(np.Inf)
+        torch_inf = torch.tensor(np.inf)
         self.best_score = torch_inf if self.monitor_op == torch.lt else -torch_inf
 
     @property

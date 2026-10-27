@@ -1,0 +1,14 @@
+# Python 3.9; install with pip<24.1 (pytorch-lightning 1.6.5 has non-standard metadata)
+torch==1.12.1
+torchvision==0.13.1
+pytorch-lightning==1.6.5
+torchmetrics==0.9.3
+numpy<1.24
+scikit-learn<1.2
+pandas<2
+matplotlib<3.7
+tensorboard<2.11
+protobuf<3.21
+pyyaml
+scipy
+tqdm

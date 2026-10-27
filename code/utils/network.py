@@ -8,7 +8,6 @@ from torch import nn
 from torch.nn import functional as F
 import torchvision
 from torchmetrics.functional import accuracy, average_precision, auroc, roc, confusion_matrix
-from torchmetrics.utilities.data import to_categorical
 import yaml
 from util_functions import bcolors
 from util_functions import make_confusion_matrix_figure, make_roc_curves_figure
@@ -116,21 +115,21 @@ class FFNetwork(pl.LightningModule):
     
     def evaluate_metrics(self, preds, target, num_classes, compute_cf_mat=False,
                          cm_figure=False, roc_figure=False):
-        categorical_preds = to_categorical(preds, argmax_dim=1)
+        categorical_preds = preds.argmax(dim=1)
 
-        acc = accuracy(preds, target, average='micro', num_classes=num_classes)
-        ap = average_precision(preds, target, num_classes=num_classes, average='macro')
-        auroc_ = auroc(preds, target, num_classes=num_classes, average='macro')
+        acc = accuracy(preds, target, task='multiclass', average='micro', num_classes=num_classes)
+        ap = average_precision(preds, target, task='multiclass', num_classes=num_classes, average='macro')
+        auroc_ = auroc(preds, target, task='multiclass', num_classes=num_classes, average='macro')
         cf_mat = None
         if compute_cf_mat:
             if (not cm_figure) or num_classes > 16:
-                cf_mat = confusion_matrix(preds, target, num_classes=num_classes) #, normalize='true') # causes nan
+                cf_mat = confusion_matrix(preds, target, task='multiclass', num_classes=num_classes) #, normalize='true') # causes nan
             else:
                 cf_mat = metrics.confusion_matrix(target.cpu().numpy(), categorical_preds.cpu().numpy(), labels=np.arange(num_classes))
                 cf_mat = make_confusion_matrix_figure(cf_mat, np.arange(num_classes))
                 #cf_mat = plot_to_image(cf_mat)
         
-        roc_curve = roc(preds, target, num_classes=num_classes)
+        roc_curve = roc(preds, target, task='multiclass', num_classes=num_classes)
         fpr, tpr, _ = roc_curve
         if roc_figure and num_classes <= 16:
             roc_curve = make_roc_curves_figure(fpr, tpr, num_classes)
@@ -145,8 +144,8 @@ class FFNetwork(pl.LightningModule):
         loss = self.criterion(o, y)
         self.log('train_loss', loss, on_step=False, on_epoch=True, prog_bar=False, logger=True)
 
-        target = to_categorical(y, argmax_dim=1)
-        train_acc = accuracy(o, target, average='micro', num_classes=num_classes)
+        target = y.argmax(dim=1)
+        train_acc = accuracy(o, target, task='multiclass', average='micro', num_classes=num_classes)
         self.log('train_acc', train_acc, on_step=False, on_epoch=True, prog_bar=True, logger=True)
         
         self.run_val=False
@@ -182,7 +181,7 @@ class FFNetwork(pl.LightningModule):
             o = self.forward(x)
             loss = self.criterion(o, y)
             self.log('val_loss', loss)
-            target = to_categorical(y, argmax_dim=1)
+            target = y.argmax(dim=1)
             
             val_acc, _, _, val_cf_mat, val_roc_curve = self.evaluate_metrics(o, 
                                                                 target, num_classes, compute_cf_mat=False,
@@ -224,7 +223,7 @@ class FFNetwork(pl.LightningModule):
         loss = self.criterion(o, y)
         self.log('test_loss', loss, on_step=False, on_epoch=True, prog_bar=False, logger=True)
         
-        target = to_categorical(y, argmax_dim=1)
+        target = y.argmax(dim=1)
         test_acc, test_ap, test_auroc_, test_cf_mat, test_roc_curve = self.evaluate_metrics(o, 
                                                         target, num_classes, compute_cf_mat=True, 
                                                         cm_figure=True, roc_figure=True)

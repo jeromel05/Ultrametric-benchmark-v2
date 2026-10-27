@@ -1,6 +1,6 @@
 import numpy as np
 import pytorch_lightning as pl
-from pytorch_lightning.callbacks import Callback, ProgressBarBase
+from pytorch_lightning.callbacks import Callback, ProgressBar
 
 # not used
 class UltraMetricCallback(Callback):
@@ -23,7 +23,7 @@ class UltraMetricCallback(Callback):
                     layer.reset_parameters()
             self.eval_steps = self.eval_steps[1:] #pop the first el bc we used it
 
-class LitProgressBar(ProgressBarBase):
+class LitProgressBar(ProgressBar):
     def __init__(self):
         super().__init__()
     

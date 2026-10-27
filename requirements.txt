@@ -1,0 +1,13 @@
+# Python 3.14
+torch==2.14.1
+torchvision==0.29.1
+pytorch-lightning==2.6.6
+torchmetrics==1.9.0
+numpy==2.5.4
+scipy==1.18.1
+scikit-learn==1.9.1
+pandas==3.1.0
+matplotlib==3.11.2
+tensorboard==2.21.0
+pyyaml==6.0.3
+tqdm

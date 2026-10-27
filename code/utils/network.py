@@ -53,7 +53,8 @@ class FFNetwork(pl.LightningModule):
         self.save_hyperparameters()
 
     def on_fit_start(self) -> None:
-        if self.n_runs < 1 and self.curr_reset_step > 0 and self.hparams.b_len > 0:
+        # the first network must also train on a shuffled chain, not only the restarted ones
+        if self.n_runs < 1 and self.hparams.b_len > 0 and not self.hparams.no_reshuffle:
             until_idx = self.steps_to_samples(self.curr_reset_step + self.curr_eval_freq)
             print(f'FIRST RUN: {bcolors.OKGREEN}Chain SHUFFLED UNTIL: : {until_idx}, curr_eval_freq: {self.curr_eval_freq}{bcolors.ENDC}')
             self.reset_network_sampler(until_idx=until_idx)
